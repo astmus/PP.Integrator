@@ -1,4 +1,6 @@
+using System;
 using System.Runtime.Versioning;
+using System.Threading;
 
 namespace Profit.Integrator.Logging
 {

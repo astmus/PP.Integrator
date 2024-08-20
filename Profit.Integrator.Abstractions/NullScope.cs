@@ -1,6 +1,6 @@
 ﻿namespace Profit.Integrator
 {
-    internal sealed class NullScope : IDisposable
+    public sealed class NullScope : IDisposable
     {
         public static NullScope Instance { get; } = new NullScope();
 

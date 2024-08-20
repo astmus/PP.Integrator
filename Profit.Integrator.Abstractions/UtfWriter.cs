@@ -1,7 +1,7 @@
 ﻿using System.Text;
 namespace Profit.Integrator
 {
-    internal class UtfWriter : StringWriter
+    public class UtfWriter : StringWriter
     {
         public UtfWriter() : base(new StringBuilder(1024))
         {
