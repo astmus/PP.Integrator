@@ -1,0 +1,40 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>annotations</Nullable>
+    <IsPackable>true</IsPackable>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnforceCodeStyleInBuild>True</EnforceCodeStyleInBuild>
+    <ProduceReferenceAssembly>False</ProduceReferenceAssembly>
+    <Title>Logging.Postgre</Title>
+    <Authors>astmus@live.com</Authors>
+    <Company>mmDev</Company>
+    <Description>LIbrary for logging to postgre database</Description>
+    <Copyright>astmus@live.com</Copyright>
+    <AnalysisLevel>6.0-recommended</AnalysisLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DebugType>portable</DebugType>
+    <IsPublishable>False</IsPublishable>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <DebugType>portable</DebugType>
+    <IsPublishable>False</IsPublishable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Configuration" Version="8.0.0" />
+    <PackageReference Include="Npgsql" Version="8.0.3">
+      <PrivateAssets>contentfiles;analyzers;build</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <Import Project="..\Profit.Shared\Profit.Shared.projitems" Label="Shared" />
+
+</Project>
