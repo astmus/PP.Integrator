@@ -1,17 +1,17 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using System.Collections.Concurrent;
+using System.Runtime.Versioning;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
-using System.Collections.Concurrent;
-using System.Runtime.Versioning;
 namespace Profit.Integrator.Logging
 {
-    [UnsupportedOSPlatform("browser")]
+	[UnsupportedOSPlatform("browser")]
     [ProviderAlias("PostgrePitLog")]
     public sealed class PostgreLogProvider : ILoggerProvider
     {
         private readonly IDisposable? _onChangeToken;
         private NpgsqlConnectionStringBuilder _currentConfig;
-        private readonly ConcurrentDictionary<string, DataBaseLogger> _loggers = new(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<string, PostgreLogger> _loggers = new(StringComparer.OrdinalIgnoreCase);
         public PostgreLogProvider(NpgsqlConnectionStringBuilder config)
         {
             _currentConfig = config;
@@ -23,13 +23,19 @@ namespace Profit.Integrator.Logging
         }
 
         public ILogger CreateLogger(string categoryName) =>
-            _loggers.GetOrAdd(categoryName, name => new DataBaseLogger(name, GetCurrentConfig));
+            _loggers.GetOrAdd(categoryName, name => new PostgreLogger(name, GetCurrentConfig));
 
         private NpgsqlConnectionStringBuilder GetCurrentConfig() => _currentConfig;
 
         public void Dispose()
         {
+            foreach (var logger in _loggers.Values)
+                logger.Flush();
             _loggers.Clear();
+            Console.WriteLine("Flushed");
+#if DEBUG
+            Console.ReadKey(); 
+#endif
             _onChangeToken?.Dispose();
         }
     }

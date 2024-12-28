@@ -4,9 +4,10 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-namespace Profit.Integrator.Logging
+using Profit.Integrator.Logging;
+namespace Profit.Integrator.Formatters
 {
-    internal sealed class JsonWriter : ILogEntryWriter
+	internal sealed class JsonFormatter : ILogEntryWriter
     {
         private const string T = "Trace";
         private const string D = "Debug";
@@ -16,39 +17,40 @@ namespace Profit.Integrator.Logging
         private const string C = "Critical";
         const int DefaultBufferSize = 1024;
         const string DateFormat = "yyyy.MM.dd hh:mm:ss";
-
-        public void Write<TState>(in LogEntry<TState> logEntry, TextWriter textWriter)
+        static readonly JsonWriterOptions _options;
+		public void Write<TState>(in LogEntry<TState> logEntry, TextWriter textWriter, object scope)
         {
-            if (logEntry.State is LogRecord<TState> buffered)
+            var scopeProvider = scope as IExternalScopeProvider;
+			if (logEntry.State is IReadOnlyList<KeyValuePair<string, object>> state)
             {
-                //string message = bufferedRecord.record.FormattedMessage ?? string.Empty;
-                WriteInternal(null, textWriter, buffered.Record.ToString(), buffered.Record.LogLevel, logEntry.Category, buffered.Record.EventId.Id, buffered.Record.Exception?.Message,
-                    buffered.Record.State != null, null, buffered.Record.State as IReadOnlyList<KeyValuePair<string, object?>>, DateTimeOffset.UtcNow);
+                string message = logEntry.Formatter(logEntry.State, logEntry.Exception) ?? string.Empty;
+                WriteInternal(scopeProvider, textWriter, message, logEntry.LogLevel, logEntry.Category, logEntry.EventId.Id, logEntry.Exception?.Message,
+                   true, null, state, logEntry.Timestamp);
             }
             else
             {
                 if (logEntry.Formatter != null && logEntry.Formatter?.Invoke(logEntry.State, logEntry.Exception) is string message)
-                    WriteInternal(logEntry.Provider, textWriter, message, logEntry.LogLevel, logEntry.Category, logEntry.EventId.Id, logEntry.Exception?.ToString(),
-                        logEntry.State != null, logEntry.State?.ToString(), logEntry.State as IReadOnlyList<KeyValuePair<string, object?>>, DateTimeOffset.UtcNow);
+                    WriteInternal(scopeProvider, textWriter, message, logEntry.LogLevel, logEntry.Category, logEntry.EventId.Id, logEntry.Exception?.ToString(),
+                        logEntry.State != null, logEntry.State?.ToString(), logEntry.State as IReadOnlyList<KeyValuePair<string, object?>>, logEntry.Timestamp);
                 else
-                    WriteInternal(logEntry.Provider, textWriter, JsonSerializer.Serialize(logEntry.State), logEntry.LogLevel, logEntry.Category, logEntry.EventId.Id, logEntry.Exception?.ToString(),
-                    logEntry.State != null, logEntry.State?.ToString(), logEntry.State as IReadOnlyList<KeyValuePair<string, object?>>, DateTimeOffset.UtcNow);
+                    WriteInternal(scopeProvider, textWriter, JsonSerializer.Serialize(logEntry.State), logEntry.LogLevel, logEntry.Category, logEntry.EventId.Id, logEntry.Exception?.ToString(),
+                    logEntry.State != null, logEntry.State?.ToString(), logEntry.State as IReadOnlyList<KeyValuePair<string, object?>>, logEntry.Timestamp);
             }
         }
 
         private static void WriteInternal(IExternalScopeProvider? scopeProvider, TextWriter textWriter, in string? message, LogLevel logLevel,
-            string category, int eventId, string? exception, bool hasState, in string? stateMessage, IReadOnlyList<KeyValuePair<string, object?>>? stateProperties, DateTimeOffset stamp)
+            string category, int eventId, string? exception, bool hasState, in string? stateMessage, IReadOnlyList<KeyValuePair<string, object?>>? stateProperties, in DateTimeOffset stamp)
         {
             var output = new ArrayBufferWriter<byte>(DefaultBufferSize);
 
-            using (var writer = new Utf8JsonWriter(output, new JsonWriterOptions()))
+            using (var writer = new Utf8JsonWriter(output, _options))
             {
                 writer.WriteStartObject();
 
-                writer.WriteString("Timestamp", stamp.ToString(DateFormat));
+                writer.WriteString("Timestamp", stamp.ToString(DateFormat,default));
 
                 writer.WriteNumber(nameof(LogEntry<object>.EventId), eventId);
-                writer.WriteString(nameof(LogEntry<object>.LogLevel), GetLogLevelString(ref logLevel));
+                writer.WriteString(nameof(LogEntry<object>.LogLevel), GetLogLevelString(in logLevel));
                 writer.WriteString(nameof(LogEntry<object>.Category), category);
                 writer.WriteString("Message", message);
 
@@ -66,7 +68,6 @@ namespace Profit.Integrator.Logging
 
                     writer.WriteEndObject();
                 }
-                WriteScopeInfo(writer, scopeProvider);
                 writer.WriteEndObject();
                 writer.Flush();
             }
@@ -86,7 +87,7 @@ namespace Profit.Integrator.Logging
             textWriter.Write(Environment.NewLine);
         }
 
-        static string GetLogLevelString(ref LogLevel logLevel) => logLevel switch
+        static string GetLogLevelString(in LogLevel logLevel) => logLevel switch
         {
             LogLevel.Trace => T,
             LogLevel.Debug => D,
