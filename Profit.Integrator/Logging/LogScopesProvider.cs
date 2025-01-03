@@ -1,10 +1,9 @@
-﻿using Microsoft.Extensions.Logging;
-using System;
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
+using Microsoft.Extensions.Logging;
 
 namespace Profit.Integrator.Logging
 {
-    public class LogScopesProvider : IExternalScopeProvider
+	public class LogScopesProvider : IExternalScopeProvider
     {
         private StrongBox<Scope?> _currentScope = new StrongBox<Scope?>();
 
@@ -30,7 +29,6 @@ namespace Profit.Integrator.Logging
         {
             private readonly LogScopesProvider _provider;
             private bool _isDisposed;
-            private bool _isDisposing;
 
             internal Scope(LogScopesProvider provider, object? state, Scope? parent)
             {
@@ -45,7 +43,6 @@ namespace Profit.Integrator.Logging
 
             public override string? ToString()
                 => State?.ToString();
-
 
             public void Dispose()
             {

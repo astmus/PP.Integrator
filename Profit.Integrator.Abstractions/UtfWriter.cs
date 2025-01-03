@@ -10,5 +10,3 @@ namespace Profit.Integrator
         public override Encoding Encoding => Encoding.UTF8;
     }
 }
-
-

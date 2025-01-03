@@ -1,12 +1,11 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using System.Collections.Concurrent;
+using System.Runtime.Versioning;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
-using System;
-using System.Collections.Concurrent;
-using System.Runtime.Versioning;
 namespace Profit.Integrator.Logging
 {
-    [UnsupportedOSPlatform("browser")]
+	[UnsupportedOSPlatform("browser")]
     [ProviderAlias("PostgrePitLog")]
     public sealed class PostgreLogProvider : ILoggerProvider
     {
@@ -30,7 +29,13 @@ namespace Profit.Integrator.Logging
 
         public void Dispose()
         {
+            foreach (var logger in _loggers.Values)
+                logger.Flush();
             _loggers.Clear();
+            Console.WriteLine("Flushed");
+#if DEBUG
+            Console.ReadKey(); 
+#endif
             _onChangeToken?.Dispose();
         }
     }
