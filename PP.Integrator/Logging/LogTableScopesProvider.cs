@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 
-namespace Profit.Integrator.Logging
+namespace PP.Integrator.Logging
 {
 	public class LogTableScopesProvider : IExternalScopeProvider
 	{

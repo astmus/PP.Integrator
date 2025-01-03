@@ -1,5 +1,5 @@
 ﻿using System.Collections.Concurrent;
-namespace Profit.Integrator.Logging
+namespace PP.Integrator.Logging
 {
     internal class BufferCollection<TUnit> : BlockingCollection<TUnit>
     {

@@ -6,9 +6,9 @@ using System.Text;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Npgsql;
-using Profit.Integrator.Formatters;
+using PP.Integrator.Formatters;
 
-namespace Profit.Integrator.Logging
+namespace PP.Integrator.Logging
 {
 	internal sealed class PostgreLogger : ILogger
 	{

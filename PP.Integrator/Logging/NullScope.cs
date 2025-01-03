@@ -1,4 +1,4 @@
-﻿namespace Profit.Integrator.Logging
+﻿namespace PP.Integrator.Logging
 {
     public sealed class NullScope : IDisposable
     {

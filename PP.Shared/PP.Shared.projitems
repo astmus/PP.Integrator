@@ -6,7 +6,7 @@
     <SharedGUID>8463bf73-51c2-4424-ab99-114a45a2fb49</SharedGUID>
   </PropertyGroup>
   <PropertyGroup Label="Configuration">
-    <Import_RootNamespace>Profit.Shared</Import_RootNamespace>
+    <Import_RootNamespace>PP.Shared</Import_RootNamespace>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)TypeNameHelper.cs" />

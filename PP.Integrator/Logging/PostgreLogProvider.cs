@@ -3,7 +3,7 @@ using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
-namespace Profit.Integrator.Logging
+namespace PP.Integrator.Logging
 {
 	[UnsupportedOSPlatform("browser")]
     [ProviderAlias("PostgrePitLog")]

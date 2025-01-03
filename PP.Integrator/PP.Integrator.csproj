@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <EnforceCodeStyleInBuild>True</EnforceCodeStyleInBuild>
     <ProduceReferenceAssembly>False</ProduceReferenceAssembly>
-    <Title>Logging.Postgre</Title>
+    <Title>PP.Logging</Title>
     <Authors>astmus@live.com</Authors>
     <Company>mmDev</Company>
     <Description>LIbrary for logging to postgre database</Description>
@@ -35,6 +35,6 @@
     </PackageReference>
   </ItemGroup>
 
-  <Import Project="..\Profit.Shared\Profit.Shared.projitems" Label="Shared" />
+  <Import Project="..\PP.Shared\PP.Shared.projitems" Label="Shared" />
 
 </Project>

@@ -3,9 +3,9 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Configuration;
 using Npgsql;
-using Profit.Integrator.Logging;
+using PP.Integrator.Logging;
 
-namespace Profit.Integrator
+namespace PP.Integrator
 {
 	public static class IntegratorLoggerExtensions
 	{

@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 
-namespace Profit.Integrator.Logging
+namespace PP.Integrator.Logging
 {
 	public abstract record LogRecord(object Scope)
 	{

@@ -2,8 +2,8 @@
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using NpgsqlTypes;
-using Profit.Integrator.Logging;
-namespace Profit.Integrator.Formatters
+using PP.Integrator.Logging;
+namespace PP.Integrator.Formatters
 {
 	internal abstract class EntryWriter : ILogEntryWriter
 	{

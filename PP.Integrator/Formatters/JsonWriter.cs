@@ -4,8 +4,8 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using Profit.Integrator.Logging;
-namespace Profit.Integrator.Formatters
+using PP.Integrator.Logging;
+namespace PP.Integrator.Formatters
 {
 	internal sealed class JsonFormatter : ILogEntryWriter
     {

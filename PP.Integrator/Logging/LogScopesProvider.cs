@@ -1,7 +1,7 @@
 ﻿using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 
-namespace Profit.Integrator.Logging
+namespace PP.Integrator.Logging
 {
 	public class LogScopesProvider : IExternalScopeProvider
     {
