@@ -1,10 +1,21 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 
 namespace PP
 {
+	internal static class TypeHelper<Type>
+    {
+		public static readonly Guid Identifier;
+		public static readonly string Name;
+		
+		static TypeHelper()
+		{
+			var type = typeof(Type);
+			Identifier = type.GUID;
+			Name = type.Name;        
+		}
+	}
+
     internal static class TypeNameHelper
     {
         private const char DefaultNestedTypeDelimiter = '+';

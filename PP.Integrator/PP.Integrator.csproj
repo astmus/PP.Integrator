@@ -12,9 +12,12 @@
     <Authors>astmus@live.com</Authors>
     <Company>mmDev</Company>
     <Description>LIbrary for logging to postgre database</Description>
-    <Copyright>astmus@live.com</Copyright>
+    <Copyright>Copyright © mmDevs 2024-2025</Copyright>
     <AnalysisLevel>6.0-recommended</AnalysisLevel>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -26,6 +29,17 @@
     <DebugType>portable</DebugType>
     <IsPublishable>False</IsPublishable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\docs\icon.png">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+    <None Include="..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
