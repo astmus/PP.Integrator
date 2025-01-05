@@ -9,12 +9,13 @@ namespace Examples
 		public static void Main(string[] args)
 		{
 			var builder = Host.CreateApplicationBuilder();
-			builder.Logging.ClearProviders();
+			//builder.Logging.ClearProviders();
 			builder.Logging.AddPostgreLogger(ConfigureConnectionString);
-
-			//builder.Services.AddHostedService<TestSMPPService>();
-			builder.Services.AddHostedService<UpdateSubscriber>();
-			builder.Services.AddPostgreChangeTrackingService(ConfigureConnectionString, ConfigureTracking);
+			builder.Services.AddLoggingExamples();
+			
+			//builder.Services.AddHostedService<TrackingChangesExample>();
+			//builder.Services.AddPostgreChangeTrackingService(ConfigureConnectionString, ConfigureTracking);
+			
 			var host = builder.Build();
 			host.Run();
 		}

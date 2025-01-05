@@ -9,8 +9,11 @@ namespace PP.Integrator
 {
 	public static class IntegratorLoggerExtensions
 	{
-		public static ILoggingBuilder AddPostgreLogger(this ILoggingBuilder builder, Action<NpgsqlConnectionStringBuilder> configure)
+		public static ILoggingBuilder AddPostgreLogger(this ILoggingBuilder builder, Action<NpgsqlConnectionStringBuilder> configure, bool backCompatibility = false)
 		{
+			if (backCompatibility)
+				AppContext.SetSwitch("Npgsql.EnableStoredProcedureCompatMode", true);
+
 			builder.Services.Configure(configure);			
 			builder.AddConfiguration();
 			builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider, PostgreLogProvider>());

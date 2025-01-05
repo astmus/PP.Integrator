@@ -1,8 +1,4 @@
-﻿using System.Collections.Concurrent;
-using System.ComponentModel.DataAnnotations;
-using System.Diagnostics;
-using System.Globalization;
-using System.Text;
+﻿using System.Collections.Immutable;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -10,22 +6,23 @@ using PP.Integrator.Formatters;
 
 namespace PP.Integrator.Logging
 {
-	internal sealed class PostgreLogger : ILogger
+	internal sealed partial class PostgreLogger : ILogger
 	{
-		private readonly string _name;
+		private readonly string _contextName;
 		private readonly Func<NpgsqlConnectionStringBuilder> _currentConfig;
-		private LogTableScopesProvider ScopeProvider;
+		private LogTableScopesProvider _scopeProvider;
 		private Channel<LogRecord> _logQueue;
 		private NpgsqlDataSource _source;
 		private Thread _outputThread;
 		private Action? _initialize;
 		private CancellationTokenSource _cancellation;
 		private ManualResetEvent _slim;
-		private const int bufferSize = 4096;
-		private const ushort timeThreshold = 4096;
-		public PostgreLogger(string name, Func<NpgsqlConnectionStringBuilder> getCurrentConfig)
+		private const int BUFFER_SIZE = 4096;
+		private const ushort WRITE_TIME_THRESHOLD = 8192;
+
+		public PostgreLogger(string contextName, Func<NpgsqlConnectionStringBuilder> getCurrentConfig)
 		{
-			_name = name;
+			_contextName = contextName;
 			_currentConfig = getCurrentConfig;
 			_initialize = Initialize;
 		}
@@ -36,7 +33,7 @@ namespace PP.Integrator.Logging
 			_slim = new ManualResetEvent(true);
 			_source = NpgsqlDataSource.Create(_currentConfig());
 			_cancellation = new CancellationTokenSource();
-			var options = new BoundedChannelOptions(bufferSize)
+			var options = new BoundedChannelOptions(BUFFER_SIZE)
 			{
 				//AllowSynchronousContinuations = true,
 				//FullMode = BoundedChannelFullMode.Wait,
@@ -48,39 +45,43 @@ namespace PP.Integrator.Logging
 			_outputThread ??= new Thread(ProcessQueue)
 			{
 				IsBackground = true,
-				Name = $"Buffered log queue processing thread {_name}"
+				Name = $"Buffered postgre log queue processing thread"
 			};
 			_outputThread.Start();
 		}
 
 		public IDisposable BeginScope<TState>(TState state)
 		{
-			ScopeProvider ??= new LogTableScopesProvider();
-			return ScopeProvider.Push(state);
+			_scopeProvider ??= new LogTableScopesProvider();
+			return _scopeProvider.Push(state);
 		}
 
 #if DEBUG
-		int count = 0;
-		int countw = 0; 
+		int readedCount;
+		int writedCount; 
 #endif
 		public bool IsEnabled(LogLevel logLevel) =>
 			logLevel != LogLevel.None;
 
 		public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
 		{
-			if (ScopeProvider == null)
-				return;
-			//ArgumentNullException.ThrowIfNull(ScopeProvider, "log table scope");
-			if (!IsEnabled(logLevel))
+			if (_scopeProvider == null || !IsEnabled(logLevel))
 				return;
 
+			var logEntry = new LogRecord<TState>(new LogEntry<TState>(logLevel, _contextName, eventId, state, exception, formatter), _scopeProvider.CurrentScope);
+			WriteEntry(logEntry);
+		}
+
+		private void WriteEntry(LogRecord entry)
+		{
 			_initialize?.Invoke();
 			_slim.WaitOne();
-			_logQueue.Writer.TryWrite(new LogRecord<TState>(new LogEntry<TState>(logLevel, _name, eventId, state, exception, formatter), ScopeProvider.CurrentScope));
-			if (_logQueue.Reader.Count >= bufferSize)
+			_logQueue.Writer.TryWrite(entry);
+			if (_logQueue.Reader.Count >= BUFFER_SIZE)
 				_slim.Reset();
+
 #if DEBUG
-				count++;
+			readedCount++;
 #endif
 		}
 
@@ -91,22 +92,24 @@ namespace PP.Integrator.Logging
 
 		public void Flush()
 		{
+#if DEBUG
 			Console.WriteLine($"Flushing");
+#endif
 			_cancellation?.Cancel();
 			_cancellation?.Dispose();
 			_slim?.Dispose();
 #if DEBUG
-			Console.WriteLine($"read {count} write {countw}");
+			Console.WriteLine($"read {readedCount} write {writedCount}");
 #endif
 		}
 
-		Queue<LogRecord> buffer = new Queue<LogRecord>(bufferSize);
+		Queue<LogRecord> buffer = new Queue<LogRecord>(BUFFER_SIZE);
 		Queue<LogRecord> buffer2;
 		Task currentRead;
 		private async void ProcessQueue()
 		{
 #if DEBUG
-			Console.WriteLine($"{DateTime.UtcNow} read {count} write {countw}"); 
+			Console.WriteLine($"{DateTime.UtcNow} read {readedCount} write {writedCount}"); 
 #endif			
 			try
 			{
@@ -114,11 +117,12 @@ namespace PP.Integrator.Logging
 				{
 					if (currentRead == null || currentRead.Status == TaskStatus.RanToCompletion)
 						currentRead = ReadToBuffer(_cancellation.Token);
-					await currentRead;
+
+					await currentRead.ConfigureAwait(false);
 					if (buffer.Count < 1)
 					{
 #if DEBUG
-						Console.WriteLine($"{DateTime.UtcNow} read {count} write {countw}");
+						Console.WriteLine($"{DateTime.UtcNow} read {readedCount} write {writedCount}");
 #endif						
 						continue;
 					}
@@ -130,16 +134,29 @@ namespace PP.Integrator.Logging
 						currentRead = ReadToBuffer(_cancellation.Token);
 					}
 
-					using var conn = _source.OpenConnection();
-					using var writer = conn.BeginBinaryImport(buffer2.First().Scope.ToString());
-					using var _dbWriter = new BulkWriter(writer);
+					var scopes = 
+								from item in buffer2
+								group item by item.Scope.ToString()
+								into patrition
+								select new { table = patrition.Key, items = patrition.ToImmutableList() };
 
-					while (buffer2.Any() && !_cancellation.IsCancellationRequested)
+					using var conn = _source.OpenConnection();
+
+					foreach (var scope in scopes)
 					{
-						buffer2.Dequeue().Write(_dbWriter, null);
+						using var writer = conn.BeginBinaryImport(scope.table);
+						using var dbWriter = new BulkWriter(writer);
+
+						foreach(var item in scope.items)						
+						{
+							if (_cancellation.IsCancellationRequested)
+								break;
+
+							item.Write(dbWriter, null);
 #if DEBUG
-						countw++; 
+							writedCount++;
 #endif
+						}
 					}
 				}
 			}
@@ -159,21 +176,22 @@ namespace PP.Integrator.Logging
 		private async Task ReadToBuffer(CancellationToken cancel)
 		{
 			if (Interlocked.Exchange(ref readIsWork, 1) > 0) return;
-			if (buffer?.Count == bufferSize)
+			if (buffer?.Count == BUFFER_SIZE)
 			{
 				Interlocked.Decrement(ref readIsWork);
 				return;
 			}
 
 			ushort elapsed = 0;
-			ushort pos = 0;
-			Queue<LogRecord> innerBuffer = new Queue<LogRecord>(bufferSize);			
+			ushort position = 0;
+			Queue<LogRecord> innerBuffer = new Queue<LogRecord>(BUFFER_SIZE);			
 			do
 			{				
 				if (_logQueue.Reader.TryRead(out var current))
 				{
 					innerBuffer.Enqueue(current);
-					pos++;
+					position++;
+					elapsed = 0;
 				}
 				else
 				{
@@ -181,7 +199,7 @@ namespace PP.Integrator.Logging
 					elapsed += 128;
 				}
 			}
-			while (elapsed < timeThreshold && pos < bufferSize && !cancel.IsCancellationRequested);
+			while (elapsed < WRITE_TIME_THRESHOLD && position < BUFFER_SIZE && !cancel.IsCancellationRequested);
 			buffer = innerBuffer;
 			currentRead = null;
 			Interlocked.Decrement(ref readIsWork);

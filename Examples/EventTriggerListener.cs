@@ -2,7 +2,7 @@
 
 namespace Examples
 {
-	internal class EventTriggerExample : ChangeConsumer<EventTrigger>
+	internal class EventTriggerListener : ChangeConsumer<EventTrigger>
 	{
 		List<EventTrigger> triggers = new List<EventTrigger>();
 

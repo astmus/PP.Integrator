@@ -32,10 +32,10 @@ namespace PP.Integrator.Formatters
 			WriteTimestamp(stamp);
 			WriteLogLevel(logLevel);
 			WriteContext(context);
-			WriteEventId(eventId);
-			WriteFormat(list?.First(item=> item.Key == "{OriginalFormat}").Value.ToString());			
 			WriteMessage(message);
+			WriteEventId(eventId);
 			WriteException(exception);
+			WriteFormat(list?.First(item=> item.Key == "{OriginalFormat}").Value.ToString());			
 			WriteState(list?.Where(item => item.Key != "{OriginalFormat}").ToArray() ?? state);			
 		}
 

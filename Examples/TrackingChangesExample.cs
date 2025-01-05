@@ -2,16 +2,16 @@ using PP.Integrator.ChangeTracking;
 
 namespace Examples
 {
-	public class UpdateSubscriber : BackgroundService
+	public class TrackingChangesExample : BackgroundService
 	{
-		private readonly ILogger<UpdateSubscriber> logger;
+		private readonly ILogger<TrackingChangesExample> logger;
 		private readonly IChangeDispatcher dispatcher;
-		EventTriggerExample settings;
-		public UpdateSubscriber(ILogger<UpdateSubscriber> logger, IChangeDispatcher dispatcher)
+		EventTriggerListener settings;
+		public TrackingChangesExample(ILogger<TrackingChangesExample> logger, IChangeDispatcher dispatcher)
 		{
 			this.logger = logger;
 			this.dispatcher = dispatcher;
-			settings = new EventTriggerExample();
+			settings = new EventTriggerListener();
 		}
 		public override Task StartAsync(CancellationToken cancellationToken)
 		{

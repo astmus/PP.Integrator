@@ -6,7 +6,7 @@ public class WebSocketLogItem
 	public WebSocketEventTypes EventType { set; get; }
 	public Guid? SocketId { set; get; }
 	public Guid? ServerId { set; get; }
-	public string ServerUrl { set; get; }
+	public string Email { set; get; }
 	public string ClientIpAddress { set; get; }
 	public int ClientPort { set; get; }
 	public string MessageText { set; get; }

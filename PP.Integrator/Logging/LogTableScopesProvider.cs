@@ -5,6 +5,11 @@ namespace PP.Integrator.Logging
 	public class LogTableScopesProvider : IExternalScopeProvider
 	{
 		public object CurrentScope { get; set; }
+		public LogTableScopesProvider(bool withDefaultScope = false)
+		{
+			if (withDefaultScope)
+				CurrentScope = Push("logs");
+		}
 
 		public void ForEachScope<TState>(Action<object?, TState> callback, TState state)
 		{
@@ -30,17 +35,19 @@ namespace PP.Integrator.Logging
 		internal class TableScope : IDisposable
 		{
 			private LogTableScopesProvider _provider;
+			public object? State { get; }
+			string _context;
+			private bool disposedValue;
+
 			internal TableScope(LogTableScopesProvider provider, object? tableName)
 			{
 				_provider = provider;
 				State = tableName;
 			}
 
-			public object? State { get; }
-			string _context;
 			public override string? ToString()
 			{
-				// попробовать заменить на интернирование
+				// попробовать заменить на интернирование как нибудь
 				return _context ?? (_context = $"COPY  {State} ({string.Join(',', Columns())}) FROM STDIN (FORMAT BINARY)");
 			}
 
@@ -49,19 +56,13 @@ namespace PP.Integrator.Logging
 				yield return "timestamp";
 				yield return "loglevel";
 				yield return "category";
-				yield return "eventid  ";
-				yield return "originalformat";
 				yield return "message";
+				yield return "eventid  ";
 				yield return "exception";
+				yield return "originalformat";
 				yield return "state";
 			}
 
-			private bool disposedValue;
-
-			protected virtual void Dispose(bool disposing)
-			{				
-			}
-			
 			public void Dispose()
 			{
 				if (!disposedValue)
