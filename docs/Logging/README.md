@@ -22,8 +22,8 @@ CREATE TABLE logs
 	loglevel       CHAR(20),
 	category       TEXT NOT NULL,
 	message        TEXT,
-	exception      JSONB,
 	eventid        INTEGER,
+	exception      JSONB,
 	originalformat TEXT,
 	state          JSONB
 );
