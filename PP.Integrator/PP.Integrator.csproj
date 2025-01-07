@@ -1,54 +1,51 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFrameworks>net6.0;net8.0</TargetFrameworks>
-    <Nullable>annotations</Nullable>
-    <IsPackable>true</IsPackable>
-    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <EnforceCodeStyleInBuild>True</EnforceCodeStyleInBuild>
-    <ProduceReferenceAssembly>False</ProduceReferenceAssembly>
-    <Title>PP.Logging</Title>
-    <Authors>astmus@live.com</Authors>
-    <Company>mmDev</Company>
-    <Description>LIbrary for logging to postgre database</Description>
-    <Copyright>Copyright © mmDevs 2024-2025</Copyright>
-    <AnalysisLevel>6.0-recommended</AnalysisLevel>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageIcon>icon.png</PackageIcon>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFrameworks>net6.0;net8.0</TargetFrameworks>
+		<Nullable>annotations</Nullable>
+		<IsPackable>true</IsPackable>
+		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<EnforceCodeStyleInBuild>True</EnforceCodeStyleInBuild>
+		<ProduceReferenceAssembly>False</ProduceReferenceAssembly>
+		<PackageId>PP.Logging</PackageId>
+		<Authors>astmus@live.com</Authors>
+		<Company>mmDev</Company>
+		<Description>LIbrary for logging to postgre database by use binary bulk insert</Description>
+		<Copyright>Copyright © mmDevs 2024-2025</Copyright>
+		<AnalysisLevel>6.0-recommended</AnalysisLevel>		
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageIcon>icon.png</PackageIcon>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<GenerateDocumentationFile>True</GenerateDocumentationFile>
+		<PackageTags>logging;postgre</PackageTags>
+	</PropertyGroup>
 
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-    <DebugType>portable</DebugType>
-    <IsPublishable>False</IsPublishable>
-  </PropertyGroup>
+	<ItemGroup>
+		<None Include="..\docs\icon.png">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+		<None Include="..\docs\Logging\README.md">
+		  <Pack>True</Pack>
+		  <PackagePath>\</PackagePath>
+		</None>
+	</ItemGroup>
+	<ItemGroup Condition="'$(TargetFramework)' == 'net6.0'">
+		<PackageReference Include="Npgsql" Version="7.0.7">
+			<PrivateAssets>contentfiles;analyzers;build</PrivateAssets>
+		</PackageReference>
+	</ItemGroup>
+	<ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+		<PackageReference Include="Npgsql" Version="8.0.5">
+			<PrivateAssets>contentfiles;analyzers;build</PrivateAssets>
+		</PackageReference>
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Configuration" Version="8.0.0" />
+	</ItemGroup>
 
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
-    <DebugType>portable</DebugType>
-    <IsPublishable>False</IsPublishable>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <None Include="..\docs\icon.png">
-      <Pack>True</Pack>
-      <PackagePath>\</PackagePath>
-    </None>
-    <None Include="..\README.md">
-      <Pack>True</Pack>
-      <PackagePath>\</PackagePath>
-    </None>
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Configuration" Version="8.0.0" />
-    <PackageReference Include="Npgsql" Version="8.0.3">
-      <PrivateAssets>contentfiles;analyzers;build</PrivateAssets>
-    </PackageReference>
-  </ItemGroup>
-
-  <Import Project="..\PP.Shared\PP.Shared.projitems" Label="Shared" />
+	<Import Project="..\PP.Shared\PP.Shared.projitems" Label="Shared" />
 
 </Project>

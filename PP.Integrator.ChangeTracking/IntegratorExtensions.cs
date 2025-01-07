@@ -3,8 +3,18 @@ using Npgsql;
 
 namespace PP.Integrator.ChangeTracking
 {
+	/// <summary>
+	/// Класс расширений
+	/// </summary>
 	public static class IntegratorExtensions
 	{
+		/// <summary>
+		/// Добавляет в приложени поддержку активного прослушивания изменений объектов в базе данных
+		/// </summary>
+		/// <param name="services">Коллекция сервисов</param>
+		/// <param name="configure">Настройка подключнения к базе данных</param>
+		/// <param name="configureBuilder">Настройка прослушивания изменений</param>
+		/// <returns></returns>
 		public static IServiceCollection AddPostgreChangeTrackingService(this IServiceCollection services, Action<NpgsqlConnectionStringBuilder> configure, Action<IChangeDispatcherBuilder> configureBuilder)
 		{
 			services.Configure(configure);

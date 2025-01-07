@@ -2,19 +2,44 @@
 
 namespace PP.Integrator.Logging
 {
+	/// <summary>
+	/// Базовый класс элемента логирования
+	/// </summary>
+	/// <param name="Scope"></param>
 	public abstract record LogRecord(object Scope)
 	{
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <param name="entryWriter"></param>
+		/// <param name="textWriter"></param>
 		public abstract void Write(ILogEntryWriter entryWriter, TextWriter textWriter);
 	}
 
-	public record LogRecord<TRecord>(LogEntry<TRecord> Record, object Scope) : LogRecord(Scope)
+	/// <summary>
+	/// <inheritdoc/>
+	/// </summary>
+	/// <typeparam name="TEntry"></typeparam>
+	/// <param name="Entry"></param>
+	/// <param name="Scope"></param>
+	public record LogRecord<TEntry>(LogEntry<TEntry> Entry, object Scope) : LogRecord(Scope)
 	{
+		/// <summary>
+		/// Записать LogEntry при помощи <paramref name="entryWriter"/>
+		/// </summary>
+		/// <param name="entryWriter"></param>
+		/// <param name="textWriter"></param>
 		public override void Write(ILogEntryWriter entryWriter, TextWriter textWriter)
 		{
-			entryWriter.Write(Record, textWriter, Scope);
+			entryWriter.Write(Entry, textWriter, Scope);
 		}
 	}
 
+#pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
+	/// <summary>
+	/// Класс записи в логе
+	/// </summary>
+	/// <typeparam name="TState"></typeparam>
 	public readonly struct LogEntry<TState>
 	{
 		public LogEntry(LogLevel logLevel, string category, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
@@ -35,6 +60,7 @@ namespace PP.Integrator.Logging
 		public DateTimeOffset Timestamp { get; } = DateTimeOffset.UtcNow;
 		public Func<TState, Exception?, string> Formatter { get; }
 	}
+#pragma warning restore CS1591 // Missing XML comment for publicly visible type or member
 }
 
 

@@ -6,23 +6,25 @@ using Npgsql;
 namespace PP.Integrator.Logging
 {
 	[UnsupportedOSPlatform("browser")]
-	[ProviderAlias("PostgrePitLog")]
-	public sealed class PostgreLogProvider : ILoggerProvider
+	[ProviderAlias("PostgreLog")]	
+	internal sealed class PostgreLogProvider : ILoggerProvider
 	{
-		private readonly IDisposable? _onChangeToken;
+		//private readonly IDisposable? _onChangeToken;
 		private NpgsqlConnectionStringBuilder _currentConfig;
 		private readonly ConcurrentDictionary<string, PostgreLogger.DelegatedLogger> _loggers = new(StringComparer.OrdinalIgnoreCase);
 		private PostgreLogger _rootLogger;
+				
 		public PostgreLogProvider(NpgsqlConnectionStringBuilder config)
 		{
 			_currentConfig = config;
 		}
-		public PostgreLogProvider(IOptionsMonitor<NpgsqlConnectionStringBuilder> config)
+		
+		public PostgreLogProvider(IOptionsMonitor<NpgsqlConnectionStringBuilder> config) :this(config.CurrentValue)
 		{
-			_currentConfig = config.CurrentValue;
+			//_currentConfig = config.CurrentValue;
 			//_onChangeToken = config.OnChange(updatedConfig => _currentConfig = updatedConfig);
 		}
-
+				
 		public ILogger CreateLogger(string categoryName)
 		{
 			_rootLogger ??= new PostgreLogger(categoryName, GetCurrentConfig);
@@ -40,7 +42,7 @@ namespace PP.Integrator.Logging
 			Console.WriteLine("Flushed");
 			Console.ReadKey();
 #endif
-			_onChangeToken?.Dispose();
+			//_onChangeToken?.Dispose();
 		}
 	}
 }

@@ -6,9 +6,17 @@ using Npgsql;
 using PP.Integrator.Logging;
 
 namespace PP.Integrator
-{
+{	
+	/// 	
 	public static class IntegratorLoggerExtensions
 	{
+		/// <summary>
+		/// Добавляет bulk логирование в postgre базу данных
+		/// </summary>
+		/// <param name="builder"></param>
+		/// <param name="configure">Настройка подключения к базе</param>
+		/// <param name="backCompatibility">True если нужна обратная совместимость</param>
+		/// <returns></returns>
 		public static ILoggingBuilder AddPostgreLogger(this ILoggingBuilder builder, Action<NpgsqlConnectionStringBuilder> configure, bool backCompatibility = false)
 		{
 			if (backCompatibility)

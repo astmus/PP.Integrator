@@ -3,10 +3,12 @@ using Microsoft.Extensions.Logging;
 
 namespace PP.Integrator.Logging
 {
+	/// <inheritdoc/>
 	public class LogScopesProvider : IExternalScopeProvider
     {
         private StrongBox<Scope?> _currentScope = new StrongBox<Scope?>();
 
+        /// <inheritdoc/>
         public void ForEachScope<TState>(Action<object?, TState> callback, TState state)
         {
             void Rollup(Scope? current)
@@ -19,6 +21,7 @@ namespace PP.Integrator.Logging
             Rollup(_currentScope.Value);
         }
 
+        /// <inheritdoc/>
         public IDisposable Push(object? state)
         {
             Scope? parent = _currentScope.Value;

@@ -1,5 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
+﻿using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -7,7 +6,7 @@ using Npgsql;
 namespace PP.Integrator.ChangeTracking
 {
 	internal class ChangeTracker : BackgroundService
-	{		
+	{
 		private readonly ILogger<ChangeTracker> log;
 		private readonly ChangeDispatcher dispatcher;
 		private readonly NpgsqlConnection connection;
@@ -15,14 +14,16 @@ namespace PP.Integrator.ChangeTracking
 
 		public ChangeTracker(IOptionsMonitor<NpgsqlConnectionStringBuilder> monitor, ILogger<ChangeTracker> log, ChangeDispatcher dispatcher)
 		{
-			this.monitor = monitor;			
+			this.monitor = monitor;
 			this.log = log;
 			this.dispatcher = dispatcher;
 
 			monitor.CurrentValue.KeepAlive = 4;
+#if DEBUG
 			monitor.CurrentValue.IncludeErrorDetail = true;
+#endif
 			monitor.CurrentValue.Enlist = false;
-			connection = new NpgsqlConnection(monitor.CurrentValue.ConnectionString);			
+			connection = new NpgsqlConnection(monitor.CurrentValue.ConnectionString);
 		}
 
 		public override async Task StartAsync(CancellationToken cancellationToken)
@@ -52,7 +53,7 @@ namespace PP.Integrator.ChangeTracking
 		{
 			try
 			{
-				dispatcher.Dispatch(e.Channel, e.Payload);				
+				dispatcher.Dispatch(e.Channel, e.Payload);
 			}
 			catch (Exception error)
 			{
@@ -67,6 +68,6 @@ namespace PP.Integrator.ChangeTracking
 		{
 			await connection.CloseAsync();
 			await base.StopAsync(cancellationToken);
-		}		
+		}
 	}
 }

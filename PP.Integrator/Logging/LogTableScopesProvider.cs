@@ -2,15 +2,21 @@
 
 namespace PP.Integrator.Logging
 {
+	/// <inheritdoc/>
 	public class LogTableScopesProvider : IExternalScopeProvider
 	{
+		/// <summary>
+		/// Текущая целевая таблица
+		/// </summary>
 		public object CurrentScope { get; set; }
+		///
 		public LogTableScopesProvider(bool withDefaultScope = false)
 		{
 			if (withDefaultScope)
 				CurrentScope = Push("logs");
 		}
 
+		/// <inheritdoc/>
 		public void ForEachScope<TState>(Action<object?, TState> callback, TState state)
 		{
 			void Rollup(TableScope scope)
@@ -26,6 +32,7 @@ namespace PP.Integrator.Logging
 			Rollup((TableScope)CurrentScope);
 		}
 
+		/// <inheritdoc/>
 		public IDisposable Push(object? state)
 		{
 			(CurrentScope as TableScope)?.Dispose();
@@ -51,6 +58,10 @@ namespace PP.Integrator.Logging
 				return _context ?? (_context = $"COPY  {State} ({string.Join(',', Columns())}) FROM STDIN (FORMAT BINARY)");
 			}
 
+			/// <summary>
+			/// Последовательность столбцов в целефой таблице
+			/// </summary>
+			/// <returns></returns>
 			public virtual IEnumerable<string> Columns()
 			{
 				yield return "timestamp";
