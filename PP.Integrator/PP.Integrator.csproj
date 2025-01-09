@@ -21,6 +21,14 @@
 		<PackageTags>logging;postgre</PackageTags>
 	</PropertyGroup>
 
+	<PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|net6.0|AnyCPU'">
+	  <DefineConstants>$(DefineConstants);DEV</DefineConstants>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|net8.0|AnyCPU'">
+	  <DefineConstants>$(DefineConstants);DEV</DefineConstants>
+	</PropertyGroup>
+
 	<ItemGroup>
 		<None Include="..\docs\icon.png">
 			<Pack>True</Pack>
