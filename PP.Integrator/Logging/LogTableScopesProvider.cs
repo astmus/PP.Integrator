@@ -3,7 +3,7 @@
 namespace PP.Integrator.Logging
 {
 	/// <inheritdoc/>
-	public class LogTableScopesProvider : IExternalScopeProvider
+	internal class LogTableScopesProvider : IExternalScopeProvider
 	{
 		/// <summary>
 		/// Текущая целевая таблица

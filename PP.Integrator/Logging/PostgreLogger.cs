@@ -17,7 +17,7 @@ namespace PP.Integrator.Logging
 		private Action? _initialize;
 		private CancellationTokenSource _cancellation;
 		private ManualResetEvent _slim;
-		private const int BUFFER_SIZE = 4096;
+		private int BUFFER_SIZE = -1;
 		private const ushort WRITE_TIME_THRESHOLD = 8192;
 
 		public PostgreLogger(string contextName, Func<NpgsqlConnectionStringBuilder> getCurrentConfig)
@@ -33,6 +33,8 @@ namespace PP.Integrator.Logging
 			_slim = new ManualResetEvent(true);
 			_source = NpgsqlDataSource.Create(_currentConfig());
 			_cancellation = new CancellationTokenSource();
+			BUFFER_SIZE = 81920 / sizeof(int);
+			buffer = new Queue<LogRecord>(BUFFER_SIZE);
 			var options = new BoundedChannelOptions(BUFFER_SIZE)
 			{
 				//AllowSynchronousContinuations = true,
@@ -56,7 +58,7 @@ namespace PP.Integrator.Logging
 			return _scopeProvider.Push(state);
 		}
 
-#if DEBUG
+#if DEV
 		int readedCount;
 		int writedCount; 
 #endif
@@ -80,7 +82,7 @@ namespace PP.Integrator.Logging
 			if (_logQueue.Reader.Count >= BUFFER_SIZE)
 				_slim.Reset();
 
-#if DEBUG
+#if DEV
 			readedCount++;
 #endif
 		}
@@ -92,23 +94,23 @@ namespace PP.Integrator.Logging
 
 		public void Flush()
 		{
-#if DEBUG
+#if DEV
 			Console.WriteLine($"Flushing");
 #endif
 			_cancellation?.Cancel();
 			_cancellation?.Dispose();
 			_slim?.Dispose();
-#if DEBUG
+#if DEV
 			Console.WriteLine($"read {readedCount} write {writedCount}");
 #endif
 		}
 
-		Queue<LogRecord> buffer = new Queue<LogRecord>(BUFFER_SIZE);
+		Queue<LogRecord> buffer;
 		Queue<LogRecord> buffer2;
 		Task currentRead;
 		private async void ProcessQueue()
 		{
-#if DEBUG
+#if DEV
 			Console.WriteLine($"{DateTime.UtcNow} read {readedCount} write {writedCount}"); 
 #endif			
 			try
@@ -121,7 +123,7 @@ namespace PP.Integrator.Logging
 					await currentRead.ConfigureAwait(false);
 					if (buffer.Count < 1)
 					{
-#if DEBUG
+#if DEV
 						Console.WriteLine($"{DateTime.UtcNow} read {readedCount} write {writedCount}");
 #endif						
 						continue;
@@ -133,27 +135,26 @@ namespace PP.Integrator.Logging
 						_slim.Set();
 						currentRead = ReadToBuffer(_cancellation.Token);
 					}
-
 					var scopes = 
 								from item in buffer2
 								group item by item.Scope.ToString()
 								into patrition
 								select new { table = patrition.Key, items = patrition.ToImmutableList() };
+						
 
 					using var conn = _source.OpenConnection();
-
-					foreach (var scope in scopes)
+					foreach (var scope in scopes)								
 					{
 						using var writer = conn.BeginBinaryImport(scope.table);
 						using var dbWriter = new BulkWriter(writer);
 
-						foreach(var item in scope.items)						
+						foreach (var item in scope.items)
 						{
 							if (_cancellation.IsCancellationRequested)
 								break;
 
 							item.Write(dbWriter, null);
-#if DEBUG
+#if DEV
 							writedCount++;
 #endif
 						}
