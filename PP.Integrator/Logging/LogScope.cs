@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 
 namespace PP.Integrator.Logging
 {
@@ -7,7 +7,7 @@ namespace PP.Integrator.Logging
     /// </summary>
     /// <param name="Table">Название таблицы логирования</param>
     /// <param name="MinimumLevel">Минимальный уровень логирования</param>
-    public record LogScope(string Table, LogLevel MinimumLevel = LogLevel.Information)
+    internal record LogScope(string Table, LogLevel MinimumLevel = LogLevel.Information)
     {
     }
 }

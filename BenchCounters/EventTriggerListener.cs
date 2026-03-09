@@ -1,6 +1,6 @@
-﻿using PP.Integrator.ChangeTracking;
+using PP.Integrator.ChangeTracking;
 
-namespace Examples
+namespace BenchCounters
 {
 	internal class EventTriggerListener : ChangeConsumer<EventTrigger>
 	{

@@ -1,7 +1,7 @@
 # PP.Integrator
 ## Logging
 
-Буферизированный логгер для .NET приложений использующий bulk insert.<br> Запись элементов в базу данных происходит по наполению буффера или истечении определенного времени времени (в зависимости что произойдет раньше).<br> Основная цель - логирование больших объемов данных без излишнего выделения памяти GC и попадания объектов в LOH и Second Generation GC. Логирование осуществляется асинхронно и без использования ThreadPool. <br> Объектные элементы записи лога сохраняются как бинарный json (JSONB). Для доступа к базе данных используется библиотека [Npgsql](https://www.npgsql.org/index.html).
+Буферизированный логгер для .NET приложений использующий bulk insert.<br> Запись элементов в базу данных происходит по наполению буффера или истечении определенного времени (в зависимости что произойдет раньше).<br> Основная цель - логирование больших объемов данных без излишнего выделения памяти GC и попадания объектов в LOH и Second Generation GC. Логирование осуществляется асинхронно<br> Объектные элементы записи лога сохраняются как бинарный json (JSONB). Для доступа к базе данных используется библиотека [Npgsql](https://www.npgsql.org/index.html).
 
 
 ### Основные моменты
@@ -13,7 +13,7 @@
  
 ### Структура таблицы
 
-Структура таблицы есть надмножество классических полей логирования и полей для хранения данных. Создать таблица которая будет использоваться поумолчанию можно при помощи sql кода:
+Структура таблицы есть надмножество классических полей логирования и полей для хранения данных. Создать таблицу которая будет использоваться поумолчанию можно при помощи sql кода:
 
 ```sql
 CREATE TABLE logs
@@ -45,7 +45,7 @@ CREATE INDEX logs_timestamp_index
 |Message        |Конечное сообщение сформированное из формата и переданных параметром|
 |Exception      |JSON структура исключения (если было передано)|
 |Eventid        |Идентификатор события (если было передано) |
-|Originalformat |Оригинальный формат сообзения который используется для формирования message|
+|Originalformat |Оригинальный формат сообщения который используется для формирования message|
 |State          |Параметры и обекты используемые при форматировании|
 
 ### Использование
@@ -93,27 +93,27 @@ public class LoggingExampleSecond : BackgroundService
 	private ILogger<Project> projectLogger;
   public int inta = 0;
 	public LoggingExampleSecond(ILogger<Status> log, ILogger<Project> log2)
-    {
-        statusLogger = log;
-        projectLogger = log2;
+	{
+		statusLogger = log;
+		projectLogger = log2;
 
-        var logEntry = new Status
-        {
-            Name = "Active",
-            Display = "Активен",
-            Version = inta,
-            Description = "Описание статуса",
-            Order = inta % 5
-        };
+		var logEntry = new Status
+		{
+			Name = "Active",
+			Display = "Активен",
+			Version = inta,
+			Description = "Описание статуса",
+			Order = inta % 5
+		};
 
-        var projEntry = new Project
-        {
-            Name = "Test writting"+inta,
-            Description = "проект номер "+inta,
-            Version = inta,					
-            LeftHours = inta*3
-        }; 
-    }
+		var projEntry = new Project
+		{
+			Name = "Test writting"+inta,
+			Description = "проект номер "+inta,
+			Version = inta,					
+			LeftHours = inta*3
+		}; 
+	}
 ```
 И можем производить запись используя дюбые стандартные методы расширений которые поддерживает класс ILogger
 

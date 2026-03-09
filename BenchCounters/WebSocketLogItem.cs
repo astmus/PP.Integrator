@@ -1,4 +1,4 @@
-﻿namespace Examples;
+namespace BenchCounters;
 
 public class WebSocketLogItem
 {
