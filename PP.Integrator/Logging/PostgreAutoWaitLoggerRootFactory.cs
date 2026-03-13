@@ -7,9 +7,9 @@ namespace PP.Integrator.Logging
 	{
 		public PostgreLoggerBase CreateRootLogger(
 			string categoryName,
-			Func<NpgsqlConnectionStringBuilder> getCurrentConfig,
+			NpgsqlDataSource dataSource,
 			PostgreLoggerProviderOptions options,
 			LogLevel defaultLogLevel) =>
-			new PostgreLoggerAutoWait(categoryName, getCurrentConfig, options, defaultLogLevel);
+			new PostgreLoggerAutoWait(categoryName, dataSource, options, defaultLogLevel);
 	}
 }

@@ -56,8 +56,10 @@ public class Program
 			return;
 
 		var builder = Host.CreateApplicationBuilder();
-		builder.Logging.AddPostgreLogger(ExampleDbConnection.Configure);
-		builder.Services.AddLoggingExamples();
+		builder.Logging.AddPostgreLogger(ExampleDbConnection.Configure).UseAutoWait();
+		builder.Services
+			//.AddHostedService<LoggingExampleSecond>()
+			.AddHostedService<LoggingExample>();
 		var host = builder.Build();
 		host.Run();
 	}
@@ -67,7 +69,9 @@ public class Program
 		var builder = Host.CreateApplicationBuilder();
 		builder.Logging.AddPostgreLogger(ExampleDbConnection.Configure);
 		useLoggerKind(builder.Logging);
-		builder.Services.AddLoggingExamples();
+		builder.Services
+			//.AddHostedService<LoggingExampleSecond>()
+			.AddHostedService<LoggingExample>();
 		var host = builder.Build();
 		host.Run();
 	}

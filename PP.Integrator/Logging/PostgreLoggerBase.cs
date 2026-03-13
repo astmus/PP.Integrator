@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 
@@ -7,22 +8,22 @@ namespace PP.Integrator.Logging
 	internal abstract class PostgreLoggerBase : ILogger, IDisposable
 	{
 		private readonly string _contextName;
-		protected readonly Func<NpgsqlConnectionStringBuilder> CurrentConfig;
+		protected readonly NpgsqlDataSource DataSource;
 		private readonly object _initLock = new();
 		private Func<bool> _ensureInitializedDelegate;
 		private bool _initialized;
 		private int _disposed;
-		private LogTableScopesProvider? _scopeProvider;
+		internal LogTableScopesProvider? _scopeProvider;
 		protected long _lastErrorLogTicksUtc;
 
 		protected PostgreLoggerBase(
 			string contextName,
-			Func<NpgsqlConnectionStringBuilder> getCurrentConfig,
+			NpgsqlDataSource dataSource,
 			PostgreLoggerProviderOptions options,
 			LogLevel defaultLogLevel)
 		{
 			_contextName = contextName;
-			CurrentConfig = getCurrentConfig;
+			DataSource = dataSource;
 			Options = options;
 			DefaultLogLevel = defaultLogLevel;
 			_ensureInitializedDelegate = EnsureInitialized;
@@ -134,6 +135,40 @@ namespace PP.Integrator.Logging
 				Console.Error.WriteLine(
 					$"[{loggerName}][TransientWriteError][Inner] type={error.InnerException.GetType().FullName}, message={error.InnerException.Message}");
 			}
+		}
+
+		protected static string BuildCopyCommand(string schemaName, string tableName) =>
+			$"COPY  {schemaName}.{tableName} ({string.Join(',', LogTableScopesProvider.TableScope.Columns())}) FROM STDIN (FORMAT BINARY)";
+
+		protected static (string schemaName, string tableName) ResolveDestination(string? qualifiedTableName)
+		{
+			if (string.IsNullOrWhiteSpace(qualifiedTableName))
+				return ("logs", "log");
+
+			var dotIndex = qualifiedTableName.IndexOf('.');
+			if (dotIndex <= 0 || dotIndex >= qualifiedTableName.Length - 1)
+				return ("logs", NormalizeDbIdentifier(qualifiedTableName));
+
+			var schemaName = NormalizeDbIdentifier(qualifiedTableName[..dotIndex]);
+			var tableName = NormalizeDbIdentifier(qualifiedTableName[(dotIndex + 1)..]);
+			return (schemaName, tableName);
+		}
+
+		private static string NormalizeDbIdentifier(string rawName)
+		{
+			if (string.IsNullOrWhiteSpace(rawName))
+				return "log";
+
+			var source = rawName.Trim().ToLowerInvariant();
+			var builder = new StringBuilder(source.Length);
+			for (var i = 0; i < source.Length; i++)
+			{
+				var ch = source[i];
+				builder.Append(ch is >= 'a' and <= 'z' or >= '0' and <= '9' or '_' ? ch : '_');
+			}
+
+			var prepared = string.Join('_', builder.ToString().Split('_', StringSplitOptions.RemoveEmptyEntries));
+			return string.IsNullOrWhiteSpace(prepared) ? "log" : prepared;
 		}
 
 		protected bool TryDispose() => Interlocked.Exchange(ref _disposed, 1) == 0;
