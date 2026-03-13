@@ -20,20 +20,21 @@ namespace PP.Integrator.Logging
 #endif
 		public PostgreLoggerClassic(
 			string contextName,
-			Func<NpgsqlConnectionStringBuilder> getCurrentConfig,
+			NpgsqlDataSource dataSource,
 			PostgreLoggerProviderOptions options,
 			LogLevel defaultLogLevel)
-			: base(contextName, getCurrentConfig, options, defaultLogLevel)
+			: base(contextName, dataSource, options, defaultLogLevel)
 		{
 		}
 
 		protected override void InitializeCore()
 		{
 			_slim = new ManualResetEvent(true);
-			_source = NpgsqlDataSource.Create(CurrentConfig());
+			_source = DataSource;
 			_cancellation = new CancellationTokenSource();
 			var options = new BoundedChannelOptions(MaxBufferItemsCount)
 			{
+				FullMode = BoundedChannelFullMode.Wait,
 				SingleReader = true,
 				SingleWriter = false
 			};
@@ -74,7 +75,6 @@ namespace PP.Integrator.Logging
 			_outputThread?.Join(TimeSpan.FromSeconds(30));
 			_cancellation?.Dispose();
 			_slim?.Dispose();
-			_source?.Dispose();
 		}
 
 		Queue<LogRecord>? buffer = new();
@@ -104,7 +104,9 @@ namespace PP.Integrator.Logging
 
 					var scopes =
 						from item in buffer2
-						group item by item.Scope.ToString()
+						let destination = GetQualifiedDestination(item.Scope)
+						where !string.IsNullOrWhiteSpace(destination)
+						group item by destination
 						into patrition
 						select new { table = patrition.Key, items = patrition.ToImmutableList() };
 
@@ -144,8 +146,10 @@ namespace PP.Integrator.Logging
 			if (source == null)
 				return;
 
+			var (schemaName, tableName) = ResolveDestination(table);
+			var copyCommand = BuildCopyCommand(schemaName, tableName);
 			using var conn = source.OpenConnection();
-			using var writer = conn.BeginBinaryImport(table);
+			using var writer = conn.BeginBinaryImport(copyCommand);
 			using var dbWriter = new BulkWriter(writer);
 			foreach (var item in items)
 			{
@@ -158,6 +162,12 @@ namespace PP.Integrator.Logging
 #endif
 			}
 		}
+
+		private static string? GetQualifiedDestination(object? scope) => scope switch
+		{
+			LogTableScopesProvider.TableScope tableScope => tableScope.QualifiedTableName,
+			_ => scope?.ToString()
+		};
 
 		int readIsWork;
 		private async Task ReadToBuffer(CancellationToken cancel)

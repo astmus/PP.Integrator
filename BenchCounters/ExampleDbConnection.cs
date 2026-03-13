@@ -8,7 +8,7 @@ internal static class ExampleDbConnection
 	{
 		builder.Host = "localhost";
 		builder.Port = 5432;
-		builder.Database = "master";
+		builder.Database = "postgres";
 		builder.Username = "postgres";
 		builder.Password = "postgres";
 		builder.ConnectionIdleLifetime = 10;

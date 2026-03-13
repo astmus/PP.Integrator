@@ -9,7 +9,10 @@ namespace BenchCounters;
 
 public static class LoggerBenchmarkRunner
 {
-	private const string BenchmarkTable = "logs_benchmark";
+	private const string BenchmarkScopeName = "logs_benchmark";
+	private const string BenchmarkSchemaName = "logs";
+	private const string BenchmarkTableName = "logs_benchmark_log";
+	private const string BenchmarkQualifiedTableName = $"{BenchmarkSchemaName}.{BenchmarkTableName}";
 	private static readonly TimeSpan BenchmarkWindow = TimeSpan.FromMinutes(1);
 	private static readonly TimeSpan CountersWindow = TimeSpan.FromMinutes(1) + TimeSpan.FromSeconds(5);
 	private static bool _environmentPrinted;
@@ -106,7 +109,7 @@ public static class LoggerBenchmarkRunner
 	private static ScenarioResult RunScenario(Action<ILoggingBuilder> useLoggerKind, string title)
 	{
 		PrintBenchmarkEnvironmentIfNeeded();
-		var dbBefore = TryReadDbStats(BenchmarkTable);
+		var dbBefore = TryReadDbStats(BenchmarkQualifiedTableName);
 
 		using var factory = LoggerFactory.Create(builder =>
 		{
@@ -116,7 +119,7 @@ public static class LoggerBenchmarkRunner
 		});
 
 		var logger = factory.CreateLogger($"benchmark-{title}");
-		using var scope = logger.BeginScope("logs_benchmark");
+		using var scope = logger.BeginScope(BenchmarkScopeName);
 		var sw = Stopwatch.StartNew();
 		long messages = 0;
 
@@ -129,7 +132,7 @@ public static class LoggerBenchmarkRunner
 		sw.Stop();
 		var logsPerSecond = messages / Math.Max(sw.Elapsed.TotalSeconds, 1e-9);
 		Console.WriteLine($"[{title}] Wrote {messages} log entries in {sw.Elapsed.TotalMilliseconds:N0} ms (target window: {BenchmarkWindow.TotalSeconds:N0} s, throughput: {logsPerSecond:N0} logs/sec)");
-		var dbAfter = TryReadDbStats(BenchmarkTable);
+		var dbAfter = TryReadDbStats(BenchmarkQualifiedTableName);
 
 		var rowsWritten = (dbBefore != null && dbAfter != null) ? Math.Max(0, dbAfter.RowCount - dbBefore.RowCount) : -1;
 		var dbBytes = (dbBefore != null && dbAfter != null) ? Math.Max(0, dbAfter.TotalRelationBytes - dbBefore.TotalRelationBytes) : -1;
@@ -187,7 +190,7 @@ public static class LoggerBenchmarkRunner
 		return $"{days:00}:{hours:00}:{minutes:00}:{seconds:00}";
 	}
 
-	private static DbStats? TryReadDbStats(string tableName)
+	private static DbStats? TryReadDbStats(string qualifiedTableName)
 	{
 		try
 		{
@@ -198,8 +201,8 @@ public static class LoggerBenchmarkRunner
 
 			using var cmd = conn.CreateCommand();
 			cmd.CommandText =
-				"SELECT COUNT(*), COALESCE(pg_total_relation_size(@table_name::regclass), 0) FROM public.logs_benchmark";
-			cmd.Parameters.AddWithValue("table_name", tableName);
+				$"SELECT COUNT(*), COALESCE(pg_total_relation_size(@table_name::regclass), 0) FROM {BenchmarkQualifiedTableName}";
+			cmd.Parameters.AddWithValue("table_name", qualifiedTableName);
 
 			using var reader = cmd.ExecuteReader();
 			if (!reader.Read())

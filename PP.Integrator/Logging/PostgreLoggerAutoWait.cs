@@ -22,8 +22,8 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 	int writedCount;
 #endif
 
-	public PostgreLoggerAutoWait(string contextName, Func<NpgsqlConnectionStringBuilder> getCurrentConfig, PostgreLoggerProviderOptions options, LogLevel defaultLogLevel)
-		: base(contextName, getCurrentConfig, options, defaultLogLevel) { }
+	public PostgreLoggerAutoWait(string contextName, NpgsqlDataSource dataSource, PostgreLoggerProviderOptions options, LogLevel defaultLogLevel)
+		: base(contextName, dataSource, options, defaultLogLevel) { }
 
 	private static void ClearPartitions(Dictionary<string, List<LogRecord>> partitions)
 	{
@@ -32,6 +32,12 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 
 		partitions.Clear();
 	}
+
+	private static string? GetQualifiedDestination(object? scope) => scope switch
+	{
+		LogTableScopesProvider.TableScope tableScope => tableScope.QualifiedTableName,
+		_ => scope?.ToString()
+	};
 
 	private void DrainRemaining(Channel<LogRecord> queue, NpgsqlDataSource source, List<LogRecord> batch, Dictionary<string, List<LogRecord>> partitions, CancellationToken cancel)
 	{
@@ -85,7 +91,6 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 		var dataSignal = _dataArrived;
 		var spaceSignal = _spaceAvailable;
 		var worker = _outputThread;
-		var source = _source;
 
 		queue?.Writer.TryComplete();
 		dataSignal?.Set();
@@ -98,7 +103,6 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 			worker.Join();
 		}
 
-		source?.Dispose();
 		cancel?.Dispose();
 		dataSignal?.Dispose();
 		spaceSignal?.Dispose();
@@ -111,7 +115,7 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 	{
 		_dataArrived = new AutoResetEvent(false);
 		_spaceAvailable = new AutoResetEvent(false);
-		_source = NpgsqlDataSource.Create(CurrentConfig());
+		_source = DataSource;
 		_cancellation = new CancellationTokenSource();
 
 		var options = new BoundedChannelOptions(MaxBufferItemsCount)
@@ -218,7 +222,7 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 
 		foreach (var item in batch.Where(static item => item.Scope != null))
 		{
-			var table = item.Scope?.ToString();
+			var table = GetQualifiedDestination(item.Scope);
 			if (string.IsNullOrWhiteSpace(table))
 				continue;
 
@@ -289,7 +293,9 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 
 	private void WritePartition(NpgsqlConnection conn, string table, List<LogRecord> items, CancellationToken cancel)
 	{
-		using var writer = conn.BeginBinaryImport(table);
+		var (schemaName, tableName) = ResolveDestination(table);
+		var copyCommand = BuildCopyCommand(schemaName, tableName);
+		using var writer = conn.BeginBinaryImport(copyCommand);
 		using var dbWriter = new BulkWriter(writer);
 
 		foreach (var item in items)

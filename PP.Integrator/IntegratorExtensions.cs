@@ -6,29 +6,56 @@ using Npgsql;
 using PP.Integrator.Logging;
 
 namespace PP.Integrator
-{	
-	/// 	
+{
+	/// <summary>
+	/// Регистрация NpgsqlDataSource и bulk-логирования в Postgre.
+	/// </summary>
 	public static class IntegratorLoggerExtensions
 	{
 		/// <summary>
-		/// Добавляет bulk логирование в postgre базу данных
+		/// Регистрирует <see cref="NpgsqlDataSource" /> в контейнере для использования логгером.
 		/// </summary>
-		/// <param name="builder"></param>
-		/// <param name="configure">Настройка подключения к базе</param>
-		/// <param name="backCompatibility">True если нужна обратная совместимость</param>
+		/// <param name="services">Коллекция сервисов.</param>
+		/// <param name="configure">Настройка строки подключения.</param>
 		/// <returns></returns>
-		public static ILoggingBuilder AddPostgreLogger(this ILoggingBuilder builder, Action<NpgsqlConnectionStringBuilder> configure, bool backCompatibility = false)
+		public static IServiceCollection AddPostgreLoggingDataSource(this IServiceCollection services, Action<NpgsqlConnectionStringBuilder> configure)
+		{
+			var csb = new NpgsqlConnectionStringBuilder();
+			configure(csb);
+			var dataSource = NpgsqlDataSource.Create(csb);
+			services.AddSingleton(dataSource);
+			return services;
+		}
+
+		/// <summary>
+		/// Добавляет bulk-логирование в Postgre. Требует зарегистрированный <see cref="NpgsqlDataSource" /> (например, через <see cref="AddPostgreLoggingDataSource" />).
+		/// </summary>
+		/// <param name="builder">Построитель логирования.</param>
+		/// <param name="backCompatibility">True если нужна обратная совместимость.</param>
+		/// <returns></returns>
+		public static ILoggingBuilder AddPostgreLogger(this ILoggingBuilder builder, bool backCompatibility = false)
 		{
 			if (backCompatibility)
 				AppContext.SetSwitch("Npgsql.EnableStoredProcedureCompatMode", true);
 
-			builder.Services.Configure(configure);
 			builder.AddConfiguration();
 			builder.Services.TryAddSingleton<IPostgreLoggerRootFactory, PostgreClassicLoggerRootFactory>();
 			builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider, PostgreLogProvider>());
 			LoggerProviderOptions.RegisterProviderOptions<PostgreLoggerProviderOptions, PostgreLogProvider>(builder.Services);
-			LoggerProviderOptions.RegisterProviderOptions<NpgsqlConnectionStringBuilder, PostgreLogProvider>(builder.Services);
 			return builder;
+		}
+
+		/// <summary>
+		/// Регистрирует <see cref="NpgsqlDataSource" /> в контейнере и добавляет bulk-логирование в Postgre.
+		/// </summary>
+		/// <param name="builder">Построитель логирования.</param>
+		/// <param name="configure">Настройка строки подключения.</param>
+		/// <param name="backCompatibility">True если нужна обратная совместимость.</param>
+		/// <returns></returns>
+		public static ILoggingBuilder AddPostgreLogger(this ILoggingBuilder builder, Action<NpgsqlConnectionStringBuilder> configure, bool backCompatibility = false)
+		{
+			builder.Services.AddPostgreLoggingDataSource(configure);
+			return builder.AddPostgreLogger(backCompatibility);
 		}
 
 		/// <summary>

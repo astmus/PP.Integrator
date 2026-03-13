@@ -3,53 +3,51 @@ using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
+
 namespace PP.Integrator.Logging
 {
 	[UnsupportedOSPlatform("browser")]
-	[ProviderAlias("PostgreLog")]	
+	[ProviderAlias("PostgreLog")]
 	internal sealed class PostgreLogProvider : ILoggerProvider
 	{
-		private NpgsqlConnectionStringBuilder _currentConfig;
+		private readonly NpgsqlDataSource dataSource;
 		private readonly ConcurrentDictionary<string, ILogger> _loggers = new(StringComparer.OrdinalIgnoreCase);
 		private readonly PostgreLoggerProviderOptions _options;
 		private readonly LogLevel _defaultLogLevel;
 		private readonly IPostgreLoggerRootFactory _rootFactory;
 		private PostgreLoggerBase? _rootLogger;
-				
+
 		public PostgreLogProvider(
-			NpgsqlConnectionStringBuilder config,
+			NpgsqlDataSource dataSource,
 			PostgreLoggerProviderOptions options,
 			LogLevel defaultLogLevel,
 			IPostgreLoggerRootFactory rootFactory)
 		{
-			_currentConfig = config;
+			this.dataSource = dataSource;
 			_options = options;
 			_defaultLogLevel = defaultLogLevel;
 			_rootFactory = rootFactory;
 		}
-		
+
 		public PostgreLogProvider(
-			IOptionsMonitor<NpgsqlConnectionStringBuilder> config,
+			NpgsqlDataSource dataSource,
 			IOptions<PostgreLoggerProviderOptions> options,
 			IOptions<LoggerFilterOptions> loggerFilterOptions,
 			IPostgreLoggerRootFactory rootFactory)
 			: this(
-				config.CurrentValue,
+				dataSource,
 				options.Value,
 				ResolveDefaultLogLevel(options.Value, loggerFilterOptions.Value),
 				rootFactory)
 		{
 		}
-				
-		public ILogger CreateLogger(string categoryName)
-		{
-			return _loggers.GetOrAdd(categoryName, name => CreateDelegatedLogger(name));
-		}
 
-		private NpgsqlConnectionStringBuilder GetCurrentConfig() => _currentConfig;
+		public ILogger CreateLogger(string categoryName) =>
+			_loggers.GetOrAdd(categoryName, CreateDelegatedLogger);
+
 		private ILogger CreateDelegatedLogger(string categoryName)
 		{
-			_rootLogger ??= _rootFactory.CreateRootLogger(categoryName, GetCurrentConfig, _options, _defaultLogLevel);
+			_rootLogger ??= _rootFactory.CreateRootLogger(categoryName, dataSource, _options, _defaultLogLevel);
 			return new PostgreDelegatedLogger(categoryName, _rootLogger);
 		}
 
@@ -72,5 +70,4 @@ namespace PP.Integrator.Logging
 		}
 	}
 }
-
 

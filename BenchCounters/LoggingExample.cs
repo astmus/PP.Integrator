@@ -22,13 +22,13 @@ public class LoggingExample : BackgroundService
 		var loglevel = 1;
 		objs = JsonConvert.DeserializeObject<Rootobject[]>(raw);
 		var exc = new ArgumentNullException(nameof(stoppingToken));
-		TimeSpan span = DateTime.Now.TimeOfDay.Add(TimeSpan.FromSeconds(3));
+		TimeSpan span = DateTime.Now.TimeOfDay.Add(TimeSpan.FromSeconds(60));
 		var sw = Stopwatch.StartNew();
 
 		inta = 0;
 		try
 		{
-			using var background = logger.BeginScope("Backgroundlogs");
+			using var background = logger.BeginScope("background");
 
 			while (!stoppingToken.IsCancellationRequested)
 			{
@@ -48,7 +48,7 @@ public class LoggingExample : BackgroundService
 					Email = current.email
 				};
 
-				logger.Log(level, inta, logEntry, level >= LogLevel.Error ? exc : default,(item,err)=> "Запись пример объекта в state");
+				logger.Log(level, inta, logEntry, level >= LogLevel.Error ? exc : default, default);
 				//logger.LogError(inta, "Error message");
 				//_logger.LogInformation(inta, "Owner {Phone} Soket item {Item}", current.phone, logEntry);
 				if (span < DateTime.Now.TimeOfDay) break;
