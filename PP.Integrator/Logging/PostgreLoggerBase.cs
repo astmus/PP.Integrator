@@ -1,5 +1,3 @@
-using System.IO;
-using System.Text;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 
@@ -10,22 +8,24 @@ namespace PP.Integrator.Logging
 		private readonly string _contextName;
 		protected readonly NpgsqlDataSource DataSource;
 		private readonly object _initLock = new();
+		private static readonly object EnsuredTablesSync = new();
+		private static readonly HashSet<string> EnsuredTables = new(StringComparer.Ordinal);
 		private Func<bool> _ensureInitializedDelegate;
 		private bool _initialized;
 		private int _disposed;
-		internal LogTableScopesProvider? _scopeProvider;
+		internal LogTableScopesProvider _scopeProvider;
 		protected long _lastErrorLogTicksUtc;
 
 		protected PostgreLoggerBase(
 			string contextName,
 			NpgsqlDataSource dataSource,
-			PostgreLoggerProviderOptions options,
-			LogLevel defaultLogLevel)
+			PostgreLoggerProviderOptions options)
 		{
 			_contextName = contextName;
 			DataSource = dataSource;
 			Options = options;
-			DefaultLogLevel = defaultLogLevel;
+			_scopeProvider = new LogTableScopesProvider(withDefaultScope: true);
+			DefaultLogLevel = options.DefaultLogLevel ?? LogLevel.None;
 			_ensureInitializedDelegate = EnsureInitialized;
 		}
 
@@ -37,7 +37,6 @@ namespace PP.Integrator.Logging
 
 		public IDisposable BeginScope<TState>(TState state)
 		{
-			_scopeProvider ??= new LogTableScopesProvider();
 			return _scopeProvider.Push(state);
 		}
 
@@ -46,12 +45,13 @@ namespace PP.Integrator.Logging
 
 		public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
 		{
-			if (_scopeProvider == null || !IsEnabled(logLevel))
+			if (!IsEnabled(logLevel))
 				return;
 
 			var entry = new LogRecord<TState>(
 				new LogEntry<TState>(logLevel, _contextName, eventId, state, exception, formatter),
 				_scopeProvider.CurrentScope);
+
 			WriteEntry(entry);
 		}
 
@@ -97,32 +97,6 @@ namespace PP.Integrator.Logging
 			Console.Error.WriteLine($"[{loggerName}] {error.GetType().Name}: {error.Message}");
 		}
 
-		protected void ExecuteWithRetry(string loggerName, string table, Action operation)
-		{
-			Exception? lastError = null;
-			for (var attempt = 0; attempt <= WriteRetryCount; attempt++)
-			{
-				try
-				{
-					operation();
-					return;
-				}
-				catch (Exception ex) when (IsTransientWriteError(ex) && attempt < WriteRetryCount)
-				{
-					lastError = ex;
-					ReportTransientWriteError(loggerName, ex, table, attempt + 1, WriteRetryCount);
-					Thread.Sleep((attempt + 1) * 100);
-				}
-				catch (Exception ex)
-				{
-					lastError = ex;
-					break;
-				}
-			}
-
-			throw lastError ?? new InvalidOperationException($"[{loggerName}] Retry pipeline terminated without explicit error.");
-		}
-
 		protected virtual bool IsTransientWriteError(Exception ex) =>
 			ex is NpgsqlException or TimeoutException or IOException;
 
@@ -137,38 +111,30 @@ namespace PP.Integrator.Logging
 			}
 		}
 
-		protected static string BuildCopyCommand(string schemaName, string tableName) =>
-			$"COPY  {schemaName}.{tableName} ({string.Join(',', LogTableScopesProvider.TableScope.Columns())}) FROM STDIN (FORMAT BINARY)";
-
-		protected static (string schemaName, string tableName) ResolveDestination(string? qualifiedTableName)
+		protected void EnsureTableExists(string qualifiedTableName)
 		{
-			if (string.IsNullOrWhiteSpace(qualifiedTableName))
-				return ("logs", "log");
-
-			var dotIndex = qualifiedTableName.IndexOf('.');
-			if (dotIndex <= 0 || dotIndex >= qualifiedTableName.Length - 1)
-				return ("logs", NormalizeDbIdentifier(qualifiedTableName));
-
-			var schemaName = NormalizeDbIdentifier(qualifiedTableName[..dotIndex]);
-			var tableName = NormalizeDbIdentifier(qualifiedTableName[(dotIndex + 1)..]);
-			return (schemaName, tableName);
-		}
-
-		private static string NormalizeDbIdentifier(string rawName)
-		{
-			if (string.IsNullOrWhiteSpace(rawName))
-				return "log";
-
-			var source = rawName.Trim().ToLowerInvariant();
-			var builder = new StringBuilder(source.Length);
-			for (var i = 0; i < source.Length; i++)
+			lock (EnsuredTablesSync)
 			{
-				var ch = source[i];
-				builder.Append(ch is >= 'a' and <= 'z' or >= '0' and <= '9' or '_' ? ch : '_');
-			}
+				if (EnsuredTables.Contains(qualifiedTableName))
+					return;
 
-			var prepared = string.Join('_', builder.ToString().Split('_', StringSplitOptions.RemoveEmptyEntries));
-			return string.IsNullOrWhiteSpace(prepared) ? "log" : prepared;
+				var indexName = qualifiedTableName.Replace('.', '_') + "_timestamp_brin_idx";
+				using var command = DataSource.CreateCommand(
+					$"CREATE SCHEMA IF NOT EXISTS logs; " +
+					$"CREATE unlogged TABLE IF NOT EXISTS {qualifiedTableName} " +
+					"(timestamp TIMESTAMPTZ, " +
+					"loglevel text, " +
+					"category TEXT NOT NULL, " +
+					"message text, " +
+					"eventid integer, " +
+					"exception JSONB, " +
+					"originalformat text, " +
+					"state JSONB); " +
+					$"CREATE INDEX IF NOT EXISTS {indexName} " +
+					$"ON {qualifiedTableName} USING brin (timestamp);");
+				command.ExecuteNonQuery();
+				EnsuredTables.Add(qualifiedTableName);
+			}
 		}
 
 		protected bool TryDispose() => Interlocked.Exchange(ref _disposed, 1) == 0;

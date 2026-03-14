@@ -22,8 +22,8 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 	int writedCount;
 #endif
 
-	public PostgreLoggerAutoWait(string contextName, NpgsqlDataSource dataSource, PostgreLoggerProviderOptions options, LogLevel defaultLogLevel)
-		: base(contextName, dataSource, options, defaultLogLevel) { }
+	public PostgreLoggerAutoWait(string contextName, NpgsqlDataSource dataSource, PostgreLoggerProviderOptions options)
+		: base(contextName, dataSource, options) { }
 
 	private static void ClearPartitions(Dictionary<string, List<LogRecord>> partitions)
 	{
@@ -32,12 +32,6 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 
 		partitions.Clear();
 	}
-
-	private static string? GetQualifiedDestination(object? scope) => scope switch
-	{
-		LogTableScopesProvider.TableScope tableScope => tableScope.QualifiedTableName,
-		_ => scope?.ToString()
-	};
 
 	private void DrainRemaining(Channel<LogRecord> queue, NpgsqlDataSource source, List<LogRecord> batch, Dictionary<string, List<LogRecord>> partitions, CancellationToken cancel)
 	{
@@ -222,10 +216,10 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 
 		foreach (var item in batch.Where(static item => item.Scope != null))
 		{
-			var table = GetQualifiedDestination(item.Scope);
-			if (string.IsNullOrWhiteSpace(table))
+			if (item.Scope is not LogTableScopesProvider.TableScope tableScope)
 				continue;
 
+			var table = tableScope.QualifiedTableName;
 			if (!partitions.TryGetValue(table, out var items))
 			{
 				items = new List<LogRecord>();
@@ -244,22 +238,13 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 	private void WriteBatchCore(NpgsqlDataSource source, Dictionary<string, List<LogRecord>> partitions, CancellationToken cancel)
 	{
 		using var conn = source.OpenConnection();
-		using var tx = conn.BeginTransaction();
 		foreach (var partition in partitions.Where(static partition => partition.Value.Count > 0))
 		{
 			if (cancel.IsCancellationRequested)
-			{
-				tx.Rollback();
 				return;
-			}
 
-			WritePartition(conn, partition.Key, partition.Value, cancel);
+			WritePartition(conn, partition.Value, cancel);
 		}
-
-		if (cancel.IsCancellationRequested)
-			tx.Rollback();
-		else
-			tx.Commit();
 	}
 
 	private void WriteBatchSafely(NpgsqlDataSource source, List<LogRecord> batch, Dictionary<string, List<LogRecord>> partitions, CancellationToken cancel)
@@ -283,7 +268,30 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 	{
 		try
 		{
-			ExecuteWithRetry(nameof(PostgreLoggerAutoWait), "<batch>", () => WriteBatchCore(source, partitions, cancel));
+			Exception? lastError = null;
+			var attempt = 0;
+			do
+			{
+				try
+				{
+					WriteBatchCore(source, partitions, cancel);
+					return;
+				}
+				catch (Exception ex) when (IsTransientWriteError(ex) && attempt < WriteRetryCount)
+				{
+					lastError = ex;
+					ReportTransientWriteError(nameof(PostgreLoggerAutoWait), ex, "<batch>", attempt + 1, WriteRetryCount);
+					Thread.Sleep((attempt + 1) * 100);
+					attempt++;
+				}
+				catch (Exception ex)
+				{
+					lastError = ex;
+					break;
+				}
+			} while (attempt <= WriteRetryCount);
+
+			throw lastError ?? new InvalidOperationException($"[{nameof(PostgreLoggerAutoWait)}] Retry pipeline terminated without explicit error.");
 		}
 		catch (Exception ex)
 		{
@@ -291,22 +299,27 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 		}
 	}
 
-	private void WritePartition(NpgsqlConnection conn, string table, List<LogRecord> items, CancellationToken cancel)
+	private void WritePartition(NpgsqlConnection conn, List<LogRecord> items, CancellationToken cancel)
 	{
-		var (schemaName, tableName) = ResolveDestination(table);
-		var copyCommand = BuildCopyCommand(schemaName, tableName);
+		if (items.Count == 0 || items[0].Scope is not LogTableScopesProvider.TableScope tableScope)
+			return;
+
+		EnsureTableExists(tableScope.QualifiedTableName);
+		var copyCommand = tableScope.CopyCommand;
 		using var writer = conn.BeginBinaryImport(copyCommand);
-		using var dbWriter = new BulkWriter(writer);
+		var dbWriter = new BulkWriter(writer);
 
 		foreach (var item in items)
 		{
 			if (cancel.IsCancellationRequested)
 				break;
 
-			item.Write(dbWriter, (object?)null!);
+			item.Write(dbWriter, null!);
 #if DEBUG
 			writedCount++;
 #endif
 		}
+
+		writer.Complete();
 	}
 }

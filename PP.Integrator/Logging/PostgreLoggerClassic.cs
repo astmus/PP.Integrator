@@ -1,210 +1,303 @@
-using System.Collections.Immutable;
-using System.Threading.Channels;
+using System.Diagnostics;
+using System.Threading.Tasks.Dataflow;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using PP.Integrator.Formatters;
+using static PP.Integrator.Logging.LogTableScopesProvider;
 
-namespace PP.Integrator.Logging
+namespace PP.Integrator.Logging;
+
+internal sealed partial class PostgreLoggerClassic : PostgreLoggerBase
 {
-	internal sealed partial class PostgreLoggerClassic : PostgreLoggerBase
+	private readonly object _syncRoot = new();
+	private readonly NpgsqlDataSource _source;
+
+	private LogRecord?[]? _buffer;
+	private Thread? _outputThread;
+	private bool _isCompleting;
+	private int _head;
+	private int _tail;
+	private int _count;
+
+	private const int ShutdownJoinTimeoutMs = 30000;
+
+#if DEBUG
+	private int _readedCount;
+	private int _writedCount;
+#endif
+
+	public PostgreLoggerClassic(string contextName, NpgsqlDataSource source, PostgreLoggerProviderOptions options)
+		: base(contextName, source, options)
 	{
-		private Channel<LogRecord>? _logQueue;
-		private NpgsqlDataSource? _source;
-		private Thread? _outputThread;
-		private CancellationTokenSource? _cancellation;
-		private ManualResetEvent? _slim;
+		_source = source;
+	}
+
+	protected override void InitializeCore()
+	{
+		_buffer = new LogRecord[MaxBufferItemsCount];
+		_head = 0;
+		_tail = 0;
+		_count = 0;
+		_isCompleting = false;
+
+		_outputThread = new Thread(ProcessQueue)
+		{
+			IsBackground = true,
+			Name = "Buffered postgre log queue processing thread"
+		};
+		_outputThread.Start();
+	}
+
+	protected override void EnqueueEntry(LogRecord entry)
+	{
+		if (_buffer == null || IsDisposed)
+			return;
+
+		lock (_syncRoot)
+		{
+			while (!IsDisposed && !_isCompleting && _count == _buffer.Length)
+				Monitor.Wait(_syncRoot);
+
+			if (IsDisposed || _isCompleting)
+				return;
+
+			_buffer[_tail] = entry;
+			_tail++;
+			if (_tail == _buffer.Length)
+				_tail = 0;
+
+			_count++;
+			Monitor.PulseAll(_syncRoot);
 
 #if DEBUG
-		int readedCount;
-		int writedCount;
-#endif
-		public PostgreLoggerClassic(
-			string contextName,
-			NpgsqlDataSource dataSource,
-			PostgreLoggerProviderOptions options,
-			LogLevel defaultLogLevel)
-			: base(contextName, dataSource, options, defaultLogLevel)
-		{
-		}
-
-		protected override void InitializeCore()
-		{
-			_slim = new ManualResetEvent(true);
-			_source = DataSource;
-			_cancellation = new CancellationTokenSource();
-			var options = new BoundedChannelOptions(MaxBufferItemsCount)
-			{
-				FullMode = BoundedChannelFullMode.Wait,
-				SingleReader = true,
-				SingleWriter = false
-			};
-			_logQueue = Channel.CreateBounded<LogRecord>(options);
-			_outputThread = new Thread(ProcessQueue)
-			{
-				IsBackground = true,
-				Name = "Buffered postgre log queue processing thread"
-			};
-			_outputThread.Start();
-		}
-
-		protected override void EnqueueEntry(LogRecord entry)
-		{
-			var slim = _slim;
-			var queue = _logQueue;
-			if (slim == null || queue == null)
-				return;
-
-			slim.WaitOne();
-			queue.Writer.TryWrite(entry);
-			if (queue.Reader.Count >= MaxBufferItemsCount)
-				slim.Reset();
-
-#if DEBUG
-			readedCount++;
+			_readedCount++;
 #endif
 		}
+	}
 
-		public override void Flush()
+	public override void Flush()
+	{
+		if (!TryDispose())
+			return;
+
+		lock (_syncRoot)
 		{
-			if (!TryDispose())
-				return;
-
-			_cancellation?.Cancel();
-			_logQueue?.Writer.TryComplete();
-			_slim?.Set();
-			_outputThread?.Join(TimeSpan.FromSeconds(30));
-			_cancellation?.Dispose();
-			_slim?.Dispose();
+			_isCompleting = true;
+			Monitor.PulseAll(_syncRoot);
 		}
 
-		Queue<LogRecord>? buffer = new();
-		Queue<LogRecord>? buffer2;
-		Task? currentRead;
-		private async void ProcessQueue()
+		if (_outputThread == null)
+			return;
+
+		if (_outputThread.Join(ShutdownJoinTimeoutMs))
+			return;
+
+		ReportLoggingError(nameof(PostgreLoggerClassic), new TimeoutException($"Не удалось завершить {nameof(PostgreLoggerClassic)} за {ShutdownJoinTimeoutMs} мс."));
+	}
+
+	private void ProcessQueue()
+	{
+		var batch = new List<LogRecord>(MaxBufferItemsCount);
+		var groupBlock = new TransformBlock<IEnumerable<LogRecord>, IEnumerable<LogTableScopesProvider.TableScope>>(
+			GroupByScope,
+			new ExecutionDataflowBlockOptions
+			{
+				MaxDegreeOfParallelism = Environment.ProcessorCount - 1 
+			});
+		var writerBlock = new ActionBlock<IEnumerable<LogTableScopesProvider.TableScope>>(
+			WriteGroupedBatchSafely,
+			new ExecutionDataflowBlockOptions
+			{
+				MaxDegreeOfParallelism = Environment.ProcessorCount - 1
+			});
+		groupBlock.LinkTo(writerBlock, new DataflowLinkOptions { PropagateCompletion = true });
+
+		try
 		{
-			var cancel = _cancellation;
-			if (cancel == null)
-				return;
+			while (TryReadBatch(batch))
+			{
+				if (!groupBlock.Post(batch.ToArray()))
+					break;				
+			}
+
+			groupBlock.Complete();
+			writerBlock.Completion.Wait();
+		}
+		catch (Exception error)
+		{
+			ReportLoggingError(nameof(PostgreLoggerClassic), error);
+		}
+		finally
+		{
+			if (!groupBlock.Completion.IsCompleted)
+				groupBlock.Complete();
 
 			try
 			{
-				while (!cancel.IsCancellationRequested)
-				{
-					if (currentRead == null || currentRead.Status == TaskStatus.RanToCompletion)
-						currentRead = ReadToBuffer(cancel.Token);
-
-					await currentRead.ConfigureAwait(false);
-					if (buffer == null || buffer.Count < 1)
-						continue;
-
-					buffer2 = buffer;
-					buffer = null;
-					_slim?.Set();
-					currentRead = ReadToBuffer(cancel.Token);
-
-					var scopes =
-						from item in buffer2
-						let destination = GetQualifiedDestination(item.Scope)
-						where !string.IsNullOrWhiteSpace(destination)
-						group item by destination
-						into patrition
-						select new { table = patrition.Key, items = patrition.ToImmutableList() };
-
-					foreach (var scope in scopes)
-					{
-						WriteScopeWithRetry(scope.table, scope.items, cancel.Token);
-					}
-				}
+				writerBlock.Completion.Wait();
 			}
-			catch (TaskCanceledException)
+			catch (Exception completionError)
 			{
+				ReportLoggingError(nameof(PostgreLoggerClassic), completionError);
 			}
-			catch (OperationCanceledException)
-			{
-			}
-			catch (Exception error)
-			{
-				ReportLoggingError(nameof(PostgreLoggerClassic), error);
-			}
+
+			batch.Clear();
 		}
+	}
 
-		private void WriteScopeWithRetry(string table, IReadOnlyList<LogRecord> items, CancellationToken cancel)
+	private bool TryReadBatch(List<LogRecord> batch)
+	{
+		batch.Clear();
+
+		lock (_syncRoot)
 		{
-			try
-			{
-				ExecuteWithRetry(nameof(PostgreLoggerClassic), table, () => WriteScope(table, items, cancel));
-			}
-			catch (Exception ex)
-			{
-				ReportLoggingError(nameof(PostgreLoggerClassic), ex);
-			}
-		}
+			while (_count == 0 && !_isCompleting)
+				Monitor.Wait(_syncRoot);
 
-		private void WriteScope(string table, IReadOnlyList<LogRecord> items, CancellationToken cancel)
-		{
-			var source = _source;
-			if (source == null)
-				return;
+			if (_count == 0)
+				return false;
 
-			var (schemaName, tableName) = ResolveDestination(table);
-			var copyCommand = BuildCopyCommand(schemaName, tableName);
-			using var conn = source.OpenConnection();
-			using var writer = conn.BeginBinaryImport(copyCommand);
-			using var dbWriter = new BulkWriter(writer);
-			foreach (var item in items)
+			batch.Add(DequeueCore());
+
+			var deadline = Stopwatch.GetTimestamp() + Stopwatch.Frequency * AutoFlushDuration / 1000;
+
+			while (batch.Count < MaxBufferItemsCount)
 			{
-				if (cancel.IsCancellationRequested)
+				while (_count > 0 && batch.Count < MaxBufferItemsCount)
+					batch.Add(DequeueCore());
+
+				Monitor.PulseAll(_syncRoot);
+
+				if (batch.Count == MaxBufferItemsCount)
 					break;
 
-				item.Write(dbWriter, (object?)null);
-#if DEBUG
-				writedCount++;
-#endif
+				if (_isCompleting && _count == 0)
+					break;
+
+				var remaining = GetRemainingMilliseconds(deadline);
+				if (remaining <= 0)
+					break;
+
+				Monitor.Wait(_syncRoot, remaining);
 			}
+
+			Monitor.PulseAll(_syncRoot);
+			return batch.Count > 0;
+		}
+	}
+
+	private LogRecord DequeueCore()
+	{
+		var item = _buffer![_head]!;
+		_buffer[_head] = null;
+
+		_head++;
+		if (_head == _buffer!.Length)
+			_head = 0;
+
+		_count--;
+		return item;
+	}
+
+	private static IEnumerable<LogTableScopesProvider.TableScope> GroupByScope(IEnumerable<LogRecord> batch)
+	{
+		HashSet<TableScope> tables = new HashSet<TableScope>();
+		foreach (var item in batch)
+		{
+			if (item.Scope is not LogTableScopesProvider.TableScope tableScope)
+				continue;
+
+			tableScope.Enqueue(item);
+			if(!tables.Contains(tableScope))
+				tables.Add(tableScope);
 		}
 
-		private static string? GetQualifiedDestination(object? scope) => scope switch
-		{
-			LogTableScopesProvider.TableScope tableScope => tableScope.QualifiedTableName,
-			_ => scope?.ToString()
-		};
+		return tables;
+	}
 
-		int readIsWork;
-		private async Task ReadToBuffer(CancellationToken cancel)
+	private void WriteGroupedBatchSafely(IEnumerable<LogTableScopesProvider.TableScope> groupedBatch)
+	{
+		try
 		{
-			var queue = _logQueue;
-			if (queue == null)
-				return;
-
-			if (Interlocked.Exchange(ref readIsWork, 1) > 0)
-				return;
-			if (buffer?.Count == MaxBufferItemsCount)
+			foreach (var partition in groupedBatch)
 			{
-				Interlocked.Decrement(ref readIsWork);
-				return;
-			}
+				if (partition.Count == 0)
+					continue;
 
-			var elapsed = 0;
-			var position = 0;
-			Queue<LogRecord> innerBuffer = new(MaxBufferItemsCount);
+				WriteScopeWithRetry(partition);
+			}
+		}
+		catch (Exception error)
+		{
+			ReportLoggingError(nameof(PostgreLoggerClassic), error);
+		}
+	}
+
+	private void WriteScopeWithRetry(LogTableScopesProvider.TableScope tableScope)
+	{
+		try
+		{
+			Exception? lastError = null;
+			var table = tableScope.QualifiedTableName;
+			var attempt = 0;
 			do
 			{
-				if (queue.Reader.TryRead(out var current))
+				try
 				{
-					innerBuffer.Enqueue(current);
-					position++;
-					elapsed = 0;
+					WriteScope(tableScope);
+					return;
 				}
-				else
+				catch (Exception ex) when (IsTransientWriteError(ex) && attempt < WriteRetryCount)
 				{
-					await Task.Delay(128, cancel);
-					elapsed += 128;
+					lastError = ex;
+					ReportTransientWriteError(nameof(PostgreLoggerClassic), ex, table, attempt + 1, WriteRetryCount);
+					Thread.Sleep((attempt + 1) * 100);
+					attempt++;
 				}
-			}
-			while (elapsed < AutoFlushDuration && position < MaxBufferItemsCount && !cancel.IsCancellationRequested);
-			buffer = innerBuffer;
-			currentRead = null;
-			Interlocked.Decrement(ref readIsWork);
+				catch (Exception ex)
+				{
+					lastError = ex;
+					break;
+				}
+			} while (attempt <= WriteRetryCount);
+
+			throw lastError ?? new InvalidOperationException($"[{nameof(PostgreLoggerClassic)}] Retry pipeline terminated without explicit error.");
 		}
+		catch (Exception error)
+		{
+			ReportLoggingError(nameof(PostgreLoggerClassic), error);
+		}
+	}
+
+	private void WriteScope(LogTableScopesProvider.TableScope tableScope)
+	{
+		if (tableScope.Count == 0)
+			return;
+
+		using var conn = _source.OpenConnection();
+		EnsureTableExists(tableScope.QualifiedTableName);
+		using var writer = conn.BeginBinaryImport(tableScope.CopyCommand);
+		var dbWriter = new BulkWriter(writer);
+
+		while (tableScope.TryDequeue(out var item))
+		{
+			item.Write(dbWriter, null!);
+
+#if DEBUG
+			_writedCount++;
+#endif
+		}
+
+		writer.Complete();
+	}
+
+	private static int GetRemainingMilliseconds(long deadline)
+	{
+		var remainingTicks = deadline - Stopwatch.GetTimestamp();
+		if (remainingTicks <= 0)
+			return 0;
+
+		var remainingMs = remainingTicks * 1000 / Stopwatch.Frequency;
+		return remainingMs <= 0 ? 1 : (int)remainingMs;
 	}
 }

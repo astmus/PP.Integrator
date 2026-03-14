@@ -48,7 +48,7 @@ public class LoggingExample : BackgroundService
 					Email = current.email
 				};
 
-				logger.Log(level, inta, logEntry, level >= LogLevel.Error ? exc : default, default);
+				logger.Log(level,"message {int} {entry} {error}", inta, logEntry, level >= LogLevel.Error ? exc : default);
 				//logger.LogError(inta, "Error message");
 				//_logger.LogInformation(inta, "Owner {Phone} Soket item {Item}", current.phone, logEntry);
 				if (span < DateTime.Now.TimeOfDay) break;

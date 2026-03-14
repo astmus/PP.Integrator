@@ -15,8 +15,6 @@ public abstract record LogRecord(object Scope)
 	/// <param name="entryWriter"></param>
 	/// <param name="textWriter"></param>
 	public abstract void Write(ILogEntryWriter entryWriter, TextWriter textWriter);
-
-	internal virtual void Write(BulkWriter writer, object _) => Write((ILogEntryWriter)writer, TextWriter.Null);
 }
 
 

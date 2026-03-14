@@ -8,8 +8,7 @@ namespace PP.Integrator.Logging
 		public PostgreLoggerBase CreateRootLogger(
 			string categoryName,
 			NpgsqlDataSource dataSource,
-			PostgreLoggerProviderOptions options,
-			LogLevel defaultLogLevel) =>
-			new PostgreLoggerClassic(categoryName, dataSource, options, defaultLogLevel);
+		PostgreLoggerProviderOptions options) =>
+		new PostgreLoggerClassic(categoryName, dataSource, options);
 	}
 }

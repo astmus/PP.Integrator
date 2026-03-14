@@ -32,3 +32,5 @@ public readonly struct LogEntry<TState>
 
 	public DateTimeOffset Timestamp { get; } = DateTimeOffset.UtcNow;
 }
+
+public readonly record struct LogEntry(LogLevel logLevel, string category, EventId eventId, ReadOnlyMemory<byte> state, ReadOnlyMemory<byte>? exception);

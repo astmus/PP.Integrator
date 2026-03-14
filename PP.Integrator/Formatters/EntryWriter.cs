@@ -19,24 +19,38 @@ internal abstract class EntryWriter : ILogEntryWriter
 		OnAfterEntryWrite();
 	}
 
-	private static object SplitStructuredState(IReadOnlyList<KeyValuePair<string, object?>> structuredState, out string? originalFormat)
+	private static object PrepareStatePayload(IReadOnlyList<KeyValuePair<string, object?>> structuredState, out string? originalFormat)
 	{
 		originalFormat = null;
-		List<KeyValuePair<string, object?>>? filteredState = null;
+
+		var originalFormatIndex = -1;
 		for (var i = 0; i < structuredState.Count; i++)
 		{
 			var item = structuredState[i];
-			if (string.Equals(item.Key, OriginalFormatKey, StringComparison.Ordinal))
-			{
-				originalFormat = item.Value?.ToString();
+			if (!string.Equals(item.Key, OriginalFormatKey, StringComparison.Ordinal))
 				continue;
-			}
 
-			filteredState ??= new List<KeyValuePair<string, object?>>(structuredState.Count);
-			filteredState.Add(item);
+			originalFormatIndex = i;
+			originalFormat = item.Value?.ToString();
+			break;
 		}
 
-		return filteredState?.ToArray() ?? Array.Empty<KeyValuePair<string, object?>>();
+		if (originalFormatIndex < 0)
+			return structuredState;
+		if (structuredState.Count == 1)
+			return Array.Empty<KeyValuePair<string, object?>>();
+
+		var filteredState = new KeyValuePair<string, object?>[structuredState.Count - 1];
+		var writeIndex = 0;
+		for (var i = 0; i < structuredState.Count; i++)
+		{
+			if (i == originalFormatIndex)
+				continue;
+
+			filteredState[writeIndex++] = structuredState[i];
+		}
+
+		return filteredState;
 	}
 
 	protected void WriteInternal(string? message, in LogLevel logLevel, string context, in int eventId, Exception? exception, object? state, in DateTimeOffset stamp)
@@ -44,7 +58,7 @@ internal abstract class EntryWriter : ILogEntryWriter
 		var originalFormat = default(string);
 		var statePayload = state;
 		if (state is IReadOnlyList<KeyValuePair<string, object?>> structuredState)
-			statePayload = SplitStructuredState(structuredState, out originalFormat);
+			statePayload = PrepareStatePayload(structuredState, out originalFormat);
 
 		WriteTimestamp(stamp);
 		WriteLogLevel(logLevel);

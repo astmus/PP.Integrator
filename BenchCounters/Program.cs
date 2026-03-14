@@ -53,12 +53,17 @@ public class Program
 	public static void Main(string[] args)
 	{
 		if (HandleBenchmarkCommands(args))
+		{
+			Console.WriteLine("Bench completed press any key");
+			Console.ReadKey();
 			return;
+		}
 
 		var builder = Host.CreateApplicationBuilder();
 		builder.Logging.AddPostgreLogger(ExampleDbConnection.Configure).UseAutoWait();
 		builder.Services
-			//.AddHostedService<LoggingExampleSecond>()
+			.AddHostedService<LoggingExampleSecond>()
+			.AddHostedService<LoggingExampleTwoScopes>()
 			.AddHostedService<LoggingExample>();
 		var host = builder.Build();
 		host.Run();
@@ -70,7 +75,8 @@ public class Program
 		builder.Logging.AddPostgreLogger(ExampleDbConnection.Configure);
 		useLoggerKind(builder.Logging);
 		builder.Services
-			//.AddHostedService<LoggingExampleSecond>()
+			.AddHostedService<LoggingExampleSecond>()
+			.AddHostedService<LoggingExampleTwoScopes>()
 			.AddHostedService<LoggingExample>();
 		var host = builder.Build();
 		host.Run();

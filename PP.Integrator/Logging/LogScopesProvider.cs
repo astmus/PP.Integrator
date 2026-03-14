@@ -1,4 +1,3 @@
-﻿using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 
 namespace PP.Integrator.Logging
@@ -6,7 +5,7 @@ namespace PP.Integrator.Logging
 	/// <inheritdoc/>
 	public class LogScopesProvider : IExternalScopeProvider
 	{
-		private StrongBox<Scope?> _currentScope = new StrongBox<Scope?>();
+		private readonly AsyncLocal<Scope?> _currentScope = new();
 
 		/// <inheritdoc/>
 		public void ForEachScope<TState>(Action<object?, TState> callback, TState state)
@@ -55,21 +54,6 @@ namespace PP.Integrator.Logging
 					_isDisposed = true;
 				}
 			}
-			// тут порешать с утилизацией пкамяти
-			//if (!_isDisposed)
-			//{
-			//    _provider._currentScope.Value = Parent;
-			//    _isDisposed = true;
-			//}
-			//_isDisposing = true;
-			//if (!_isDisposing)
-			//{
-			//    _provider._currentScope.Value = Parent;
-			//    _isDisposed = true;
-			//}
-
 		}
 	}
 }
-
-

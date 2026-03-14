@@ -23,7 +23,7 @@ namespace PP.Integrator
 			var csb = new NpgsqlConnectionStringBuilder();
 			configure(csb);
 			var dataSource = NpgsqlDataSource.Create(csb);
-			services.AddSingleton(dataSource);
+			services.TryAddSingleton(dataSource);
 			return services;
 		}
 

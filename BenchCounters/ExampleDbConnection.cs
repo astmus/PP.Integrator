@@ -18,6 +18,9 @@ internal static class ExampleDbConnection
 		builder.MaxAutoPrepare = 200;
 		builder.AutoPrepareMinUsages = 2;
 		builder.WriteBufferSize = 65536;
+		builder.Pooling = true;
+		builder.MinPoolSize = 5;
+		builder.MaxPoolSize = 10;
 #if DEBUG
 		builder.IncludeErrorDetail = true;
 #endif

@@ -3,7 +3,7 @@ using Npgsql;
 
 namespace PP.Integrator.Logging
 {
-	internal sealed class PostgreAutoWaitLoggerRootFactory : IPostgreLoggerRootFactory
+	internal sealed class PostgreLoggerRootFactory : IPostgreLoggerRootFactory
 	{
 		public PostgreLoggerBase CreateRootLogger(
 			string categoryName,
