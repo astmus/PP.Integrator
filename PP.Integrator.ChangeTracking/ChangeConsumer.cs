@@ -3,7 +3,7 @@
 	/// <summary>
 	/// Базовый класс для получения и обработки изменений которые произошли с объектом типа <typeparamref name="Item"/>
 	/// </summary>
-	/// <typeparam name="Item"></typeparam>
+	/// <typeparam name="Item">Тип сущности, изменения которой обрабатываются.</typeparam>
 	public abstract class ChangeConsumer<Item> : IObserver<ChangeItemInfo<Item>> where Item : class
 	{
 		/// <summary>
@@ -19,7 +19,7 @@
 		/// <summary>
 		/// Уведомляет наблюдателя о том, что у поставщика возникла ошибка.
 		/// </summary>
-		/// <param name="error"></param>
+		/// <param name="error">Возникшее исключение.</param>
 		public abstract void OnError(Exception error);
 
 		/// <summary>
@@ -31,14 +31,14 @@
 		/// <summary>
 		/// Уведомляет наблюдателя о том, поставщик получил информацию об удалении объекта.
 		/// </summary>
-		/// <param name="deleted"></param>
+		/// <param name="deleted">Удаленное состояние объекта.</param>
 		public abstract void OnDelete(Item deleted);
 
 		/// <summary>
 		/// Уведомляет наблюдателя о том, поставщик получил информацию о изменении объекта.
 		/// </summary>
-		/// <param name="current"></param>
-		/// <param name="old"></param>
+		/// <param name="current">Актуальное состояние объекта.</param>
+		/// <param name="old">Предыдущее состояние объекта.</param>
 		public abstract void OnUpdate(Item current, Item old);
 
 		/// <summary>
