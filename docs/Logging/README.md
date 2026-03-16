@@ -1,145 +1,569 @@
-# PP.Integrator
-## Logging
+# Postgre Logger для PostgreSQL
 
-Буферизированный логгер для .NET приложений использующий bulk insert.<br> Запись элементов в базу данных происходит по наполению буффера или истечении определенного времени (в зависимости что произойдет раньше).<br> Основная цель - логирование больших объемов данных без излишнего выделения памяти GC и попадания объектов в LOH и Second Generation GC. Логирование осуществляется асинхронно<br> Объектные элементы записи лога сохраняются как бинарный json (JSONB). Для доступа к базе данных используется библиотека [Npgsql](https://www.npgsql.org/index.html).
+## Оглавление
 
+- [Назначение](#назначение)
+- [Быстрый старт](#быстрый-старт)
+- [Варианты регистрации](#варианты-регистрации)
+- [Выбор реализации](#выбор-реализации)
+- [Фильтрация](#фильтрация)
+- [Хранение логов в PostgreSQL](#хранение-логов-в-postgresql)
+- [Правила формирования имени таблицы из scope](#правила-формирования-имени-таблицы-из-scope)
+- [Примеры автоматически создаваемых таблиц](#примеры-автоматически-создаваемых-таблиц)
+- [Пример использования scope](#пример-использования-scope)
+- [Рекомендации по именованию scope](#рекомендации-по-именованию-scope)
+- [Что выбрать](#что-выбрать)
+- [FAQ](#faq)
 
-### Основные моменты
+## Назначение
 
- * Логирование может осуществляться в несколько таблиц паралельно
- * Таблица в которую будет происходить запись регулируется скоупом логгера
- * При логировании Exception структура исключения логируется в JSON
- * Таблица для логирования должна соответствовать определенному формату 
- 
+`Postgre`-логгер сохраняет записи логирования в PostgreSQL и автоматически создаёт необходимые объекты базы данных при первой записи в целевую таблицу.
+
+Поддерживаются:
+
+- регистрация через `ILoggingBuilder`;
+- отдельная регистрация источника данных только для логгера;
+- выбор реализации логгера:
+	- `UseClassic()`
+	- `UseAutoWait()`;
+- фильтрация по уровню и категории;
+- использование `scope` для маршрутизации записей в разные таблицы.
+
+---
+
+## Быстрый старт
+
+```csharp
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using PP.Integrator.Logging;
+
+var builder = Host.CreateApplicationBuilder(args);
+
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+
+builder.Logging
+	.AddPostgreLogger(csb =>
+	{
+		csb.Host = "localhost";
+		csb.Port = 5432;
+		csb.Database = "logs";
+		csb.Username = "postgres";
+		csb.Password = "postgres";
+	})
+	.UseAutoWait()
+	.AddPostgreLoggerFilter(null, LogLevel.Information);
+
+var app = builder.Build();
+
+var logger = app.Services.GetRequiredService<ILogger<Program>>();
+logger.LogInformation("Логгер Postgre подключён");
+
+app.Run();
+```
+
+---
+
+## Варианты регистрации
+
+### Через `NpgsqlConnectionStringBuilder`
+
+```csharp
+builder.Logging
+	.AddPostgreLogger(csb =>
+	{
+		csb.Host = "localhost";
+		csb.Port = 5432;
+		csb.Database = "logs";
+		csb.Username = "postgres";
+		csb.Password = "postgres";
+	})
+	.AddPostgreLoggerFilter(null, LogLevel.Information);
+```
+
+### Через строку подключения
+
+```csharp
+var connectionString = "Host=localhost;Port=5432;Database=logs;Username=postgres;Password=postgres";
+
+builder.Logging
+	.AddPostgreLogger(connectionString)
+	.AddPostgreLoggerFilter(null, LogLevel.Information);
+```
+
+### Через строку подключения и `NpgsqlDataSourceBuilder`
+
+```csharp
+var connectionString = "Host=localhost;Port=5432;Database=logs;Username=postgres;Password=postgres";
+
+builder.Logging
+	.AddPostgreLogger(connectionString, dsb =>
+	{
+		// Дополнительная настройка NpgsqlDataSourceBuilder.
+	})
+	.AddPostgreLoggerFilter(null, LogLevel.Information);
+```
+
+### Отдельная регистрация источника данных
+
+```csharp
+builder.Services.AddPostgreLoggingDataSource(csb =>
+{
+	csb.Host = "localhost";
+	csb.Port = 5432;
+	csb.Database = "logs";
+	csb.Username = "postgres";
+	csb.Password = "postgres";
+});
+
+builder.Logging
+	.AddPostgreLogger()
+	.AddPostgreLoggerFilter(null, LogLevel.Information);
+```
+
+---
+
+## Выбор реализации
+
+### `UseClassic()`
+
+```csharp
+builder.Logging
+	.AddPostgreLogger(csb =>
+	{
+		csb.Host = "localhost";
+		csb.Database = "logs";
+		csb.Username = "postgres";
+		csb.Password = "postgres";
+	})
+	.UseClassic()
+	.AddPostgreLoggerFilter(null, LogLevel.Information);
+```
+
+### `UseAutoWait()`
+
+```csharp
+builder.Logging
+	.AddPostgreLogger(csb =>
+	{
+		csb.Host = "localhost";
+		csb.Database = "logs";
+		csb.Username = "postgres";
+		csb.Password = "postgres";
+	})
+	.UseAutoWait()
+	.AddPostgreLoggerFilter(null, LogLevel.Information);
+```
+
+### Режим обратной совместимости
+
+```csharp
+builder.Logging
+	.AddPostgreLogger(csb =>
+	{
+		csb.Host = "localhost";
+		csb.Database = "logs";
+		csb.Username = "postgres";
+		csb.Password = "postgres";
+	}, backCompatibility: true)
+	.AddPostgreLoggerFilter(null, LogLevel.Information);
+```
+
+---
+
+## Фильтрация
+
+### Через helper-метод
+
+```csharp
+builder.Logging.AddPostgreLoggerFilter(null, LogLevel.Information);
+```
+
+### По категории
+
+```csharp
+builder.Logging.AddPostgreLoggerFilter("MyApp.Services", LogLevel.Debug);
+```
+
+### Через стандартный `AddFilter<TProvider>()`
+
+Если реальный тип провайдера называется `PostgreLogProvider`, то фильтр нужно вешать именно на него:
+
+```csharp
+builder.Logging.AddFilter<PostgreLogProvider>(null, LogLevel.Warning);
+```
+
+Если в проекте класс провайдера переименован в `PostgreLoggerProvider`, допустим такой вариант:
+
+```csharp
+builder.Logging.AddFilter<PostgreLoggerProvider>(null, LogLevel.Warning);
+```
+
+> `AddFilter<PostgreLoggerProvider>(...)` корректен только в том случае, если реальный тип провайдера действительно называется `PostgreLoggerProvider`.
+
+---
+
+## Хранение логов в PostgreSQL
+
+Логгер сохраняет записи в таблицы схемы `logs`.
+
+При первой записи в целевую таблицу логгер автоматически:
+
+- создаёт схему `logs`, если она ещё не существует;
+- создаёт таблицу логов, если она ещё не существует;
+- создаёт `BRIN`-индекс по полю `timestamp`, если он ещё не существует.
+
 ### Структура таблицы
 
-Структура таблицы есть надмножество классических полей логирования и полей для хранения данных. Создать таблицу которая будет использоваться поумолчанию можно при помощи sql кода:
-
 ```sql
-CREATE TABLE logs
+CREATE SCHEMA IF NOT EXISTS logs;
+
+CREATE UNLOGGED TABLE IF NOT EXISTS logs.<table_name>
 (
-	timestamp      TIMESTAMP,
-	loglevel       CHAR(20),
-	category       TEXT NOT NULL,
-	message        TEXT,
-	eventid        INTEGER,
-	exception      JSONB,
-	originalformat TEXT,
-	state          JSONB
+	timestamp TIMESTAMPTZ,
+	loglevel text,
+	category TEXT NOT NULL,
+	message text,
+	eventid integer,
+	exception JSONB,
+	originalformat text,
+	state JSONB
 );
+
+CREATE INDEX IF NOT EXISTS logs_<table_name>_timestamp_brin_idx
+	ON logs.<table_name> USING brin (timestamp);
 ```
-Также рекомендуется добавить индекс для ускорения записи и считывания на каждую из созданых таблиц.
+
+### Особенности
+
+- все таблицы создаются в схеме `logs`;
+- таблицы создаются как `UNLOGGED`;
+- для поля `timestamp` автоматически создаётся `BRIN`-индекс;
+- имя индекса формируется из полного имени таблицы заменой `.` на `_` и добавлением суффикса `_timestamp_brin_idx`.
+
+Примеры:
+
+- `logs.log` → `logs_log_timestamp_brin_idx`
+- `logs.import` → `logs_import_timestamp_brin_idx`
+- `logs.import_jira_issues` → `logs_import_jira_issues_timestamp_brin_idx`
+
+### SQL, используемый для инициализации таблицы
+
+```csharp
+var indexName = qualifiedTableName.Replace('.', '_') + "_timestamp_brin_idx";
+using var command = DataSource.CreateCommand(
+	$"CREATE SCHEMA IF NOT EXISTS logs; " +
+	$"CREATE unlogged TABLE IF NOT EXISTS {qualifiedTableName} " +
+	"(timestamp TIMESTAMPTZ, " +
+	"loglevel text, " +
+	"category TEXT NOT NULL, " +
+	"message text, " +
+	"eventid integer, " +
+	"exception JSONB, " +
+	"originalformat text, " +
+	"state JSONB); " +
+	$"CREATE INDEX IF NOT EXISTS {indexName} " +
+	$"ON {qualifiedTableName} USING brin (timestamp);");
+```
+
+---
+
+## Правила формирования имени таблицы из scope
+
+Имя таблицы всегда строится в схеме `logs`.
+
+### 1. Scope не задан
+
+Используется таблица:
+
+```text
+logs.log
+```
+
+Пример:
+
+```csharp
+logger.LogInformation("Приложение запущено");
+```
+
+### 2. Задан один scope
+
+Используется таблица:
+
+```text
+logs.<scope>
+```
+
+Пример:
+
+```csharp
+using var scope = logger.BeginScope("import");
+logger.LogInformation("Начат импорт");
+```
+
+Результат:
+
+```text
+logs.import
+```
+
+### 3. Используются вложенные scope
+
+Значения scope объединяются через `_`.
+
+Формат:
+
+```text
+logs.<scope>_<subScope>_<sub_Scope>
+```
+
+Пример:
+
+```csharp
+using var scope1 = logger.BeginScope("import");
+using var scope2 = logger.BeginScope("jira");
+using var scope3 = logger.BeginScope("issues");
+
+logger.LogInformation("Обработка задач");
+```
+
+Результат:
+
+```text
+logs.import_jira_issues
+```
+
+### Примеры формирования имён таблиц
+
+| Scope | Таблица |
+|---|---|
+| нет scope | `logs.log` |
+| `import` | `logs.import` |
+| `tracker` | `logs.tracker` |
+| `import` → `jira` | `logs.import_jira` |
+| `import` → `jira` → `issues` | `logs.import_jira_issues` |
+| `sync` → `users` → `full` | `logs.sync_users_full` |
+
+---
+
+## Примеры автоматически создаваемых таблиц
+
+### Без scope
+
+```csharp
+logger.LogInformation("Старт приложения");
+```
 
 ```sql
-CREATE INDEX logs_timestamp_index
-	ON logs USING brin (timestamp);
+CREATE SCHEMA IF NOT EXISTS logs;
+
+CREATE UNLOGGED TABLE IF NOT EXISTS logs.log
+(
+	timestamp TIMESTAMPTZ,
+	loglevel text,
+	category TEXT NOT NULL,
+	message text,
+	eventid integer,
+	exception JSONB,
+	originalformat text,
+	state JSONB
+);
+
+CREATE INDEX IF NOT EXISTS logs_log_timestamp_brin_idx
+	ON logs.log USING brin (timestamp);
 ```
 
-### Описание полей
+### Один scope
 
-|Поле|Описание|
-|----|--------|
-|Timestamp      |Дата и время логируемого события|
-|Loglevel       |Уровень лога|
-|Category       |Контект (название класса) в котором проиходит логирование|
-|Message        |Конечное сообщение сформированное из формата и переданных параметром|
-|Exception      |JSON структура исключения (если было передано)|
-|Eventid        |Идентификатор события (если было передано) |
-|Originalformat |Оригинальный формат сообщения который используется для формирования message|
-|State          |Параметры и обекты используемые при форматировании|
-
-### Использование
-
-Добавляем логгер при создании приложения
 ```csharp
-public static void Main(string[] args)
-{
-	var builder = Host.CreateApplicationBuilder();
-	builder.Logging.AddPostgreLogger(ConfigureConnectionString);
-}
+using var scope = logger.BeginScope("import");
+logger.LogInformation("Начат импорт данных");
 ```
 
-Функция конфигурирования строки подключения может выглядеть следующим образом
-```csharp
-		static void ConfigureConnectionString(NpgsqlConnectionStringBuilder builder)
-		{
-			builder.Host = "localhost";
-			builder.Port = 5432;
-			builder.Database = "master";
-			builder.Password = "docker";
-			builder.Username = "docker";
-#if DEBUG
-			builder.IncludeErrorDetail = true;
-#endif
-			builder.ConnectionIdleLifetime = 10;
-			builder.ConnectionPruningInterval = 10;
-			builder.Enlist = false;
-		}
+```sql
+CREATE SCHEMA IF NOT EXISTS logs;
+
+CREATE UNLOGGED TABLE IF NOT EXISTS logs.import
+(
+	timestamp TIMESTAMPTZ,
+	loglevel text,
+	category TEXT NOT NULL,
+	message text,
+	eventid integer,
+	exception JSONB,
+	originalformat text,
+	state JSONB
+);
+
+CREATE INDEX IF NOT EXISTS logs_import_timestamp_brin_idx
+	ON logs.import USING brin (timestamp);
 ```
 
-Если проект использует legacy способ вызова хранимых процедур и функций, то необходимо передать параметр backCompatibility = true, для совмнестимости старого способа вызова процедур и работы библиотеки [Npgsql](https://www.npgsql.org/index.html) версии >= 7.0.0
+### Вложенные scope
+
 ```csharp
-public static void Main(string[] args)
-{
-	var builder = Host.CreateApplicationBuilder();
-	builder.Logging.AddPostgreLogger(ConfigureConnectionString, true);
-}
+using var scope1 = logger.BeginScope("import");
+using var scope2 = logger.BeginScope("jira");
+
+logger.LogInformation("Чтение задач");
 ```
-Получаем экземпляры логера
+
+```sql
+CREATE SCHEMA IF NOT EXISTS logs;
+
+CREATE UNLOGGED TABLE IF NOT EXISTS logs.import_jira
+(
+	timestamp TIMESTAMPTZ,
+	loglevel text,
+	category TEXT NOT NULL,
+	message text,
+	eventid integer,
+	exception JSONB,
+	originalformat text,
+	state JSONB
+);
+
+CREATE INDEX IF NOT EXISTS logs_import_jira_timestamp_brin_idx
+	ON logs.import_jira USING brin (timestamp);
+```
+
+---
+
+## Пример использования scope
+
 ```csharp
-public class LoggingExampleSecond : BackgroundService
-{
-  private ILogger<Status> statusLogger;
-	private ILogger<Project> projectLogger;
-  public int inta = 0;
-	public LoggingExampleSecond(ILogger<Status> log, ILogger<Project> log2)
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Logging;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging
+	.AddPostgreLogger(csb =>
 	{
-		statusLogger = log;
-		projectLogger = log2;
+		csb.Host = "localhost";
+		csb.Database = "logs";
+		csb.Username = "postgres";
+		csb.Password = "postgres";
+	})
+	.AddPostgreLoggerFilter(null, LogLevel.Information);
 
-		var logEntry = new Status
-		{
-			Name = "Active",
-			Display = "Активен",
-			Version = inta,
-			Description = "Описание статуса",
-			Order = inta % 5
-		};
+var app = builder.Build();
 
-		var projEntry = new Project
-		{
-			Name = "Test writting"+inta,
-			Description = "проект номер "+inta,
-			Version = inta,					
-			LeftHours = inta*3
-		}; 
-	}
-```
-И можем производить запись используя дюбые стандартные методы расширений которые поддерживает класс ILogger
+app.MapGet("/process", (ILogger<Program> logger) =>
+{
+	using var scope = logger.BeginScope(new Dictionary<string, object?>
+	{
+		["ChatId"] = 123456789L,
+		["UserId"] = 777L,
+		["TraceId"] = Guid.NewGuid().ToString("N")
+	});
 
-```csharp
-//запись с кастомизированным форматирощиком, в результат попадет только строка с текстом
-statusLogger.Log(level, inta, logEntry, level >= LogLevel.Error ? exc : default, (item, err) => "Loglevel");
+	logger.LogInformation("Начата обработка команды {CommandName}", "import");
+	return "done";
+});
 
-//logEntry объект будет содержаться в поле таблицы State в виде JSONB
-statusLogger.Log(level, exc, "Ошибка статуса {Status}", logEntry);
-
-//Поле State таблицы логирования будет сожержать JSON из набора Key-Value переданных параметрами объектов
-statusLogger.LogInformation(inta, "Status {Name} ({Display}) updated version {Version} with order {Order}", logEntry.Name,logEntry.Display, logEntry.Version, logEntry.Order);
-
-//Поле State будет содержать Key-Value с именем проекта и полностью структуру projEntry в виде json
-projectLogger.LogInformation(inta+1, "Проект {Name} {Project}", projEntry.Name, projEntry);
-
+app.Run();
 ```
 
-По умолчанию запись происходит в таблицу 'logs', если необходимо вести запись в другую таблицу, то для этого используются Scopes логера
-```csharp
-using var backgroundScope = statusLogger.BeginScope("statuslogs");
-using var projectScope = projectLogger.BeginScope(new LogScope("projectlogs"));
+---
+
+## Рекомендации по именованию scope
+
+Рекомендуется использовать короткие и понятные значения scope, так как они участвуют в формировании имени таблицы.
+
+Подходящие примеры:
+
+- `import`
+- `jira`
+- `sync`
+- `users`
+- `telegram`
+- `commands`
+
+Подходящие вложенные цепочки:
+
+- `import` → `jira`
+- `sync` → `users`
+- `telegram` → `commands` → `admin`
+
+Результирующие таблицы:
+
+- `logs.import_jira`
+- `logs.sync_users`
+- `logs.telegram_commands_admin`
+
+---
+
+## Что выбрать
+
+### `AddPostgreLogger(...)`
+
+Используй, когда нужно сразу:
+
+- зарегистрировать источник данных для логгера;
+- подключить провайдер логирования.
+
+### `AddPostgreLoggingDataSource(...)` + `AddPostgreLogger()`
+
+Используй, когда нужно:
+
+- разделить регистрацию источника данных и провайдера;
+- отдельно контролировать инфраструктуру.
+
+### `UseClassic()`
+
+Используй, когда требуется классическая реализация логгера.
+
+### `UseAutoWait()`
+
+Используй, когда требуется реализация логгера с `auto-wait`.
+
+### `AddPostgreLoggerFilter(...)`
+
+Используй, когда нужно ограничить уровень или категорию логирования именно для Postgre-провайдера.
+
+---
+
+## FAQ
+
+### В какую схему сохраняются таблицы логов?
+
+Во всех случаях используется схема:
+
+```text
+logs
 ```
-Название scope есть имя таблицы которая должна присусттвовать в базе данных и иметь структуру описанную выше. Scope можно открывать несколько раз. При это старый удаляется и активным становится созданный. Класс LogScope так же позволяет настроить минимальный уровень логирования.
 
-## Пример записи
-![image](https://github.com/user-attachments/assets/fab33ebc-13cd-4bca-b29e-44e8f19bdd70)
+### Какая таблица используется по умолчанию?
 
+Если scope отсутствует, используется таблица:
+
+```text
+logs.log
+```
+
+### Что происходит при использовании вложенных scope?
+
+Имена scope объединяются через символ `_` и формируют имя таблицы в схеме `logs`.
+
+Пример:
+
+```text
+import → jira → issues
+```
+
+Результат:
+
+```text
+logs.import_jira_issues
+```
+
+### Какой индекс создаётся автоматически?
+
+Для каждой таблицы создаётся `BRIN`-индекс по полю `timestamp`.
+
+### Почему таблица создаётся как `UNLOGGED`?
+
+Это уменьшает накладные расходы на интенсивную запись логов.
 

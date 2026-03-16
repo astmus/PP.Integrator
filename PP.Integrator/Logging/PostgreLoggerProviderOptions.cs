@@ -21,11 +21,5 @@ namespace PP.Integrator.Logging
 		/// Number of retries for transient write errors.
 		/// </summary>
 		public int WriteRetryCount { get; set; } = 3;
-
-		/// <summary>
-		/// Optional override for default minimum log level.
-		/// If null, level is read from global logging settings.
-		/// </summary>
-		public LogLevel? DefaultLogLevel { get; set; }
 	}
 }

@@ -6,7 +6,7 @@ namespace PP.Integrator.Logging
 	{
 		private readonly string _contextName;
 		private readonly PostgreLoggerBase _parentLogger;
-		private readonly LogTableScopesProvider _scopeProvider = new(withDefaultScope: true);
+		//private readonly LogTableScopesProvider _scopeProvider = new(withDefaultScope: true);
 
 		public PostgreDelegatedLogger(string contextName, PostgreLoggerBase parentLogger)
 		{
@@ -20,22 +20,23 @@ namespace PP.Integrator.Logging
 				return;
 
 			var logEntry = new LogRecord<TState>(new LogEntry<TState>(logLevel, _contextName, eventId, state, exception, formatter),
-				_scopeProvider.CurrentScope);
+				_parentLogger.ScopeProvider.CurrentScope);
+
 			_parentLogger.WriteEntry(logEntry);
 		}
 
 		public bool IsEnabled(LogLevel logLevel) =>
-			logLevel != LogLevel.None && logLevel >= _parentLogger.DefaultLogLevel;
+			_parentLogger.IsEnabled(logLevel);
 
 		public IDisposable BeginScope<TState>(TState state)
 		{
 			if (state is LogScope scope)
-				return _scopeProvider.Push(scope.Table);
+				return _parentLogger.ScopeProvider.Push(scope.Table);
 
 			if (state is string tableName)
-				return _scopeProvider.Push(tableName);
+				return _parentLogger.ScopeProvider.Push(tableName);
 
-			return _scopeProvider.Push(state);
+			return _parentLogger.ScopeProvider.Push(state);
 		}
 	}
 }

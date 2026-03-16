@@ -7,8 +7,6 @@ namespace BenchCounters;
 
 public class Program
 {
-	static void ConfigureTracking(IChangeDispatcherBuilder builder) => builder.TrackChangesOf<EventTrigger>();
-
 	private static bool HandleBenchmarkCommands(string[] args)
 	{
 		if (args.Length == 0)

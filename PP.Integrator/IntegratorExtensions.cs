@@ -4,80 +4,148 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Configuration;
 using Npgsql;
 using PP.Integrator.Logging;
+using PP.Shared.Extensions;
 
-namespace PP.Integrator
+namespace PP.Integrator;
+
+public static class IntegratorLoggerExtensions
 {
+	private const string STORED_PROCEDURE_COMPAT_MODE_SWITCH = "Npgsql.EnableStoredProcedureCompatMode";
+
 	/// <summary>
-	/// Регистрация NpgsqlDataSource и bulk-логирования в Postgre.
+	/// Регистрирует источник данных Postgre, используемый только инфраструктурой логирования.
+	/// Если источник уже зарегистрирован, повторная регистрация не выполняется.
 	/// </summary>
-	public static class IntegratorLoggerExtensions
+	public static IServiceCollection AddPostgreLoggingDataSource(this IServiceCollection services, Action<NpgsqlConnectionStringBuilder> configure)
 	{
-		/// <summary>
-		/// Регистрирует <see cref="NpgsqlDataSource" /> в контейнере для использования логгером.
-		/// </summary>
-		/// <param name="services">Коллекция сервисов.</param>
-		/// <param name="configure">Настройка строки подключения.</param>
-		/// <returns></returns>
-		public static IServiceCollection AddPostgreLoggingDataSource(this IServiceCollection services, Action<NpgsqlConnectionStringBuilder> configure)
-		{
-			var csb = new NpgsqlConnectionStringBuilder();
-			configure(csb);
-			var dataSource = NpgsqlDataSource.Create(csb);
-			services.TryAddSingleton(dataSource);
-			return services;
-		}
+		GuardEx.ThrowIfNull(services, nameof(services));
+		GuardEx.ThrowIfNull(configure, nameof(configure));
 
-		/// <summary>
-		/// Добавляет bulk-логирование в Postgre. Требует зарегистрированный <see cref="NpgsqlDataSource" /> (например, через <see cref="AddPostgreLoggingDataSource" />).
-		/// </summary>
-		/// <param name="builder">Построитель логирования.</param>
-		/// <param name="backCompatibility">True если нужна обратная совместимость.</param>
-		/// <returns></returns>
-		public static ILoggingBuilder AddPostgreLogger(this ILoggingBuilder builder, bool backCompatibility = false)
+		services.TryAddSingleton<IPostgreLoggingDataSourceAccessor>(_ =>
 		{
-			if (backCompatibility)
-				AppContext.SetSwitch("Npgsql.EnableStoredProcedureCompatMode", true);
+			return new PostgreLoggingDataSourceAccessor(() =>
+			{
+				var csb = new NpgsqlConnectionStringBuilder();
+				configure(csb);
+				return new NpgsqlDataSourceBuilder(csb.ConnectionString).Build();
+			});
+		});
 
-			builder.AddConfiguration();
-			builder.Services.TryAddSingleton<IPostgreLoggerRootFactory, PostgreClassicLoggerRootFactory>();
-			builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider, PostgreLogProvider>());
-			LoggerProviderOptions.RegisterProviderOptions<PostgreLoggerProviderOptions, PostgreLogProvider>(builder.Services);
-			return builder;
-		}
+		return services;
+	}
 
-		/// <summary>
-		/// Регистрирует <see cref="NpgsqlDataSource" /> в контейнере и добавляет bulk-логирование в Postgre.
-		/// </summary>
-		/// <param name="builder">Построитель логирования.</param>
-		/// <param name="configure">Настройка строки подключения.</param>
-		/// <param name="backCompatibility">True если нужна обратная совместимость.</param>
-		/// <returns></returns>
-		public static ILoggingBuilder AddPostgreLogger(this ILoggingBuilder builder, Action<NpgsqlConnectionStringBuilder> configure, bool backCompatibility = false)
+	/// <summary>
+	/// Регистрирует источник данных Postgre, используемый только инфраструктурой логирования.
+	/// Позволяет настроить <see cref="NpgsqlDataSourceBuilder" /> напрямую.
+	/// </summary>
+	public static IServiceCollection AddPostgreLoggingDataSource(this IServiceCollection services, string connectionString, Action<NpgsqlDataSourceBuilder>? configure = null)
+	{
+		GuardEx.ThrowIfNull(services, nameof(services));
+		GuardEx.ThrowIfNullOrWhiteSpace(connectionString, nameof(connectionString));
+
+		services.TryAddSingleton<IPostgreLoggingDataSourceAccessor>(_ =>
 		{
-			builder.Services.AddPostgreLoggingDataSource(configure);
-			return builder.AddPostgreLogger(backCompatibility);
-		}
+			return new PostgreLoggingDataSourceAccessor(() =>
+			{
+				var builder = new NpgsqlDataSourceBuilder(connectionString);
+				configure?.Invoke(builder);
+				return builder.Build();
+			});
+		});
 
-		/// <summary>
-		/// Uses classic read-while-write logger implementation.
-		/// </summary>
-		public static ILoggingBuilder UseClassic(this ILoggingBuilder builder)
-		{
-			builder.Services.RemoveAll<IPostgreLoggerRootFactory>();
-			builder.Services.AddSingleton<IPostgreLoggerRootFactory, PostgreClassicLoggerRootFactory>();
-			return builder;
-		}
+		return services;
+	}
 
-		/// <summary>
-		/// Uses auto-wait logger implementation.
-		/// </summary>
-		public static ILoggingBuilder UseAutoWait(this ILoggingBuilder builder)
-		{
-			builder.Services.RemoveAll<IPostgreLoggerRootFactory>();
-			builder.Services.AddSingleton<IPostgreLoggerRootFactory, PostgreAutoWaitLoggerRootFactory>();
-			return builder;
-		}
+	/// <summary>
+	/// Добавляет Postgre-провайдер логирования.
+	/// Требует зарегистрированный <see cref="IPostgreLoggingDataSourceAccessor" />.
+	/// </summary>
+	public static ILoggingBuilder AddPostgreLogger(this ILoggingBuilder builder, bool backCompatibility = false)
+	{
+		GuardEx.ThrowIfNull(builder, nameof(builder));
+
+		ApplyBackCompatibility(backCompatibility);
+		AddPostgreLoggerCore(builder);
+		return builder;
+	}
+
+	/// <summary>
+	/// Регистрирует источник данных Postgre и добавляет Postgre-провайдер логирования.
+	/// </summary>
+	public static ILoggingBuilder AddPostgreLogger(this ILoggingBuilder builder, Action<NpgsqlConnectionStringBuilder> configure, bool backCompatibility = false)
+	{
+		GuardEx.ThrowIfNull(builder, nameof(builder));
+		GuardEx.ThrowIfNull(configure, nameof(configure));
+
+		ApplyBackCompatibility(backCompatibility);
+		builder.Services.AddPostgreLoggingDataSource(configure);
+		AddPostgreLoggerCore(builder);
+		return builder;
+	}
+
+	/// <summary>
+	/// Регистрирует источник данных Postgre и добавляет Postgre-провайдер логирования.
+	/// Позволяет настроить <see cref="NpgsqlDataSourceBuilder" /> напрямую.
+	/// </summary>
+	public static ILoggingBuilder AddPostgreLogger(this ILoggingBuilder builder, string connectionString, Action<NpgsqlDataSourceBuilder>? configure = null, bool backCompatibility = false)
+	{
+		GuardEx.ThrowIfNull(builder, nameof(builder));
+		GuardEx.ThrowIfNullOrWhiteSpace(connectionString, nameof(connectionString));
+
+		ApplyBackCompatibility(backCompatibility);
+		builder.Services.AddPostgreLoggingDataSource(connectionString, configure);
+		AddPostgreLoggerCore(builder);
+		return builder;
+	}
+
+	/// <summary>
+	/// Добавляет фильтр для Postgre-провайдера логирования.
+	/// </summary>
+	public static ILoggingBuilder AddPostgreLoggerFilter(this ILoggingBuilder builder, string? category, LogLevel minLevel)
+	{
+		GuardEx.ThrowIfNull(builder, nameof(builder));
+
+		builder.AddFilter<PostgreLogProvider>(category, minLevel);
+		return builder;
+	}
+
+	/// <summary>
+	/// Использует классическую реализацию логгера.
+	/// </summary>
+	public static ILoggingBuilder UseClassic(this ILoggingBuilder builder)
+	{
+		GuardEx.ThrowIfNull(builder, nameof(builder));
+
+		builder.Services.RemoveAll<IPostgreLoggerRootFactory>();
+		builder.Services.AddSingleton<IPostgreLoggerRootFactory, PostgreClassicLoggerRootFactory>();
+		return builder;
+	}
+
+	/// <summary>
+	/// Использует реализацию логгера с auto-wait.
+	/// </summary>
+	public static ILoggingBuilder UseAutoWait(this ILoggingBuilder builder)
+	{
+		GuardEx.ThrowIfNull(builder, nameof(builder));
+
+		builder.Services.RemoveAll<IPostgreLoggerRootFactory>();
+		builder.Services.AddSingleton<IPostgreLoggerRootFactory, PostgreAutoWaitLoggerRootFactory>();
+		return builder;
+	}
+
+	private static void ApplyBackCompatibility(bool backCompatibility)
+	{
+		if (!backCompatibility)
+			return;
+
+		AppContext.SetSwitch(STORED_PROCEDURE_COMPAT_MODE_SWITCH, true);
+	}
+
+	private static void AddPostgreLoggerCore(ILoggingBuilder builder)
+	{
+		builder.AddConfiguration();
+		builder.Services.TryAddSingleton<IPostgreLoggerRootFactory, PostgreClassicLoggerRootFactory>();
+		builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider, PostgreLogProvider>());
+		LoggerProviderOptions.RegisterProviderOptions<PostgreLoggerProviderOptions, PostgreLogProvider>(builder.Services);
 	}
 }
-
-

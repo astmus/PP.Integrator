@@ -22,8 +22,8 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 	int writedCount;
 #endif
 
-	public PostgreLoggerAutoWait(string contextName, NpgsqlDataSource dataSource, PostgreLoggerProviderOptions options)
-		: base(contextName, dataSource, options) { }
+	public PostgreLoggerAutoWait(string contextName, IPostgreLoggingDataSourceAccessor dataSourceAccessor, PostgreLoggerProviderOptions options)
+		: base(contextName, dataSourceAccessor, options) { }
 
 	private static void ClearPartitions(Dictionary<string, List<LogRecord>> partitions)
 	{
@@ -216,10 +216,9 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 
 		foreach (var item in batch.Where(static item => item.Scope != null))
 		{
-			if (item.Scope is not LogTableScopesProvider.TableScope tableScope)
+			if (item.Scope is not string table || string.IsNullOrWhiteSpace(table))
 				continue;
 
-			var table = tableScope.QualifiedTableName;
 			if (!partitions.TryGetValue(table, out var items))
 			{
 				items = new List<LogRecord>();
@@ -243,7 +242,7 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 			if (cancel.IsCancellationRequested)
 				return;
 
-			WritePartition(conn, partition.Value, cancel);
+			WritePartition(conn, partition.Key, partition.Value, cancel);
 		}
 	}
 
@@ -299,13 +298,13 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 		}
 	}
 
-	private void WritePartition(NpgsqlConnection conn, List<LogRecord> items, CancellationToken cancel)
+	private void WritePartition(NpgsqlConnection conn, string tableName, List<LogRecord> items, CancellationToken cancel)
 	{
-		if (items.Count == 0 || items[0].Scope is not LogTableScopesProvider.TableScope tableScope)
+		if (items.Count == 0)
 			return;
 
-		EnsureTableExists(tableScope.QualifiedTableName);
-		var copyCommand = tableScope.CopyCommand;
+		EnsureTableExists(tableName);
+		var copyCommand = TableScopeResolver.BuildCopyCommand(tableName);
 		using var writer = conn.BeginBinaryImport(copyCommand);
 		var dbWriter = new BulkWriter(writer);
 

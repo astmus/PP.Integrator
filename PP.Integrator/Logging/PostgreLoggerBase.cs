@@ -13,19 +13,17 @@ namespace PP.Integrator.Logging
 		private Func<bool> _ensureInitializedDelegate;
 		private bool _initialized;
 		private int _disposed;
-		internal LogTableScopesProvider _scopeProvider;
+
 		protected long _lastErrorLogTicksUtc;
 
-		protected PostgreLoggerBase(
-			string contextName,
-			NpgsqlDataSource dataSource,
-			PostgreLoggerProviderOptions options)
+		internal LogTableScopesProvider ScopeProvider;
+
+		protected PostgreLoggerBase(string contextName, IPostgreLoggingDataSourceAccessor dataSourceAccessor, PostgreLoggerProviderOptions options)
 		{
 			_contextName = contextName;
-			DataSource = dataSource;
+			DataSource = dataSourceAccessor.DataSource;
 			Options = options;
-			_scopeProvider = new LogTableScopesProvider(withDefaultScope: true);
-			DefaultLogLevel = options.DefaultLogLevel ?? LogLevel.None;
+			ScopeProvider = new LogTableScopesProvider(withDefaultScope: true);
 			_ensureInitializedDelegate = EnsureInitialized;
 		}
 
@@ -33,15 +31,12 @@ namespace PP.Integrator.Logging
 		protected int MaxBufferItemsCount => Options.MaxBufferItemsCount;
 		protected int AutoFlushDuration => Options.AutoFlushDuration;
 		protected int WriteRetryCount => Options.WriteRetryCount;
-		internal LogLevel DefaultLogLevel { get; }
 
-		public IDisposable BeginScope<TState>(TState state)
-		{
-			return _scopeProvider.Push(state);
-		}
+		public IDisposable BeginScope<TState>(TState state) =>
+			ScopeProvider.Push(state);
 
-		public bool IsEnabled(LogLevel logLevel) =>
-			logLevel != LogLevel.None && logLevel >= DefaultLogLevel;
+		public bool IsEnabled(LogLevel logLevel)
+			=> logLevel != LogLevel.None;
 
 		public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
 		{
@@ -50,7 +45,7 @@ namespace PP.Integrator.Logging
 
 			var entry = new LogRecord<TState>(
 				new LogEntry<TState>(logLevel, _contextName, eventId, state, exception, formatter),
-				_scopeProvider.CurrentScope);
+				ScopeProvider.CurrentScope);
 
 			WriteEntry(entry);
 		}
@@ -84,7 +79,7 @@ namespace PP.Integrator.Logging
 		}
 
 		private bool IsAlive() =>
-			!(!_initialized || Volatile.Read(ref _disposed) == 1);
+			_initialized && Volatile.Read(ref _disposed) != 1;
 
 		protected void ReportLoggingError(string loggerName, Exception error)
 		{
@@ -104,11 +99,10 @@ namespace PP.Integrator.Logging
 		{
 			Console.Error.WriteLine(
 				$"[{loggerName}][TransientWriteError] table='{table}', attempt={attempt}/{maxRetries}, type={error.GetType().FullName}, message={error.Message}");
+
 			if (error.InnerException != null)
-			{
 				Console.Error.WriteLine(
 					$"[{loggerName}][TransientWriteError][Inner] type={error.InnerException.GetType().FullName}, message={error.InnerException.Message}");
-			}
 		}
 
 		protected void EnsureTableExists(string qualifiedTableName)

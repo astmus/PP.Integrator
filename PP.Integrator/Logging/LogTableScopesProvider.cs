@@ -15,7 +15,8 @@ namespace PP.Integrator.Logging
 		/// </summary>
 		internal TableScope? CurrentScope => _currentScope.Value;
 
-		public LogTableScopesProvider(bool withDefaultScope = false)
+		/// <inheritdoc/>
+		public LogTableScopesProvider(bool withDefaultScope = true)
 		{
 			if (withDefaultScope)
 				_currentScope.Value = TableScope.CreateDefault(this);

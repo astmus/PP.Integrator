@@ -10,7 +10,7 @@ namespace PP.Integrator.Logging
 	[ProviderAlias("PostgreLog")]
 	internal sealed class PostgreLogProvider : ILoggerProvider
 	{
-		private readonly NpgsqlDataSource dataSource;
+		private readonly IPostgreLoggingDataSourceAccessor _dataSourceAccessor;
 		private readonly ConcurrentDictionary<string, ILogger> _loggers = new(StringComparer.OrdinalIgnoreCase);
 		private readonly PostgreLoggerProviderOptions _options;
 		private readonly IPostgreLoggerRootFactory _rootFactory;
@@ -18,15 +18,15 @@ namespace PP.Integrator.Logging
 		private PostgreLoggerBase? _rootLogger;
 		private int _disposed;
 
-		public PostgreLogProvider(NpgsqlDataSource dataSource, PostgreLoggerProviderOptions options, IPostgreLoggerRootFactory rootFactory)
+		public PostgreLogProvider(IPostgreLoggingDataSourceAccessor dataSourceAccessor, PostgreLoggerProviderOptions options, IPostgreLoggerRootFactory rootFactory)
 		{
-			this.dataSource = dataSource;
+			_dataSourceAccessor = dataSourceAccessor;
 			_options = options;
 			_rootFactory = rootFactory;
 		}
 
-		public PostgreLogProvider(NpgsqlDataSource dataSource, IOptions<PostgreLoggerProviderOptions> options, IOptions<LoggerFilterOptions> loggerFilterOptions, IPostgreLoggerRootFactory rootFactory)
-			: this(dataSource, ResolveDefaultLogLevel(options.Value, loggerFilterOptions.Value), rootFactory)
+		public PostgreLogProvider(IPostgreLoggingDataSourceAccessor dataSourceAccessor, IOptions<PostgreLoggerProviderOptions> options, IOptions<LoggerFilterOptions> loggerFilterOptions, IPostgreLoggerRootFactory rootFactory)
+			: this(dataSourceAccessor, options.Value, rootFactory)
 		{
 		}
 
@@ -69,19 +69,10 @@ namespace PP.Integrator.Logging
 				if (existing != null)
 					return existing;
 
-				existing = _rootFactory.CreateRootLogger(categoryName, dataSource, _options);
+				existing = _rootFactory.CreateRootLogger(categoryName, _dataSourceAccessor, _options);
 				_rootLogger = existing;
 				return existing;
 			}
-		}
-
-		private static PostgreLoggerProviderOptions ResolveDefaultLogLevel(PostgreLoggerProviderOptions options, LoggerFilterOptions filterOptions)
-		{
-			if (options.DefaultLogLevel.HasValue)
-				return options;
-
-			options.DefaultLogLevel = filterOptions.MinLevel;
-			return options;
 		}
 	}
 }
