@@ -35,7 +35,7 @@ namespace PP.Integrator.ChangeTracking
 	/// <summary>
 	/// Содержит данные которые изменились
 	/// </summary>
-	/// <typeparam name="Item"></typeparam>
+	/// <typeparam name="Item">Тип сущности, для которой пришли изменения.</typeparam>
 	public record ChangeItemInfo<Item> : DataChangeContext where Item : class
 	{
 		/// <summary>

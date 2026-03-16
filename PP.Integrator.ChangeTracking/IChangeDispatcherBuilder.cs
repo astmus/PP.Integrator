@@ -8,8 +8,8 @@
 		/// <summary>
 		/// Отслеживать изменения для типа <typeparamref name="Item"/>
 		/// </summary>
-		/// <typeparam name="Item"></typeparam>
-		/// <returns></returns>
+		/// <typeparam name="Item">Тип сущности, для которой нужно отслеживание.</typeparam>
+		/// <returns>Текущий builder для цепочки вызовов.</returns>
 		IChangeDispatcherBuilder TrackChangesOf<Item>() where Item : class;
 	}
 }

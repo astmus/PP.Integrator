@@ -6,15 +6,14 @@ namespace PP.Integrator.Logging;
 /// <summary>
 /// Базовый класс элемента логирования.
 /// </summary>
-/// <param name="Scope"></param>
+/// <param name="Scope">Объект контекста (scope), с которым связана запись.</param>
 public abstract record LogRecord(object Scope)
 {
 	/// <summary>
 	/// Записывает запись лога через указанный writer.
 	/// </summary>
-	/// <param name="entryWriter"></param>
-	/// <param name="textWriter"></param>
+	/// <param name="entryWriter">Компонент, выполняющий запись.</param>
+	/// <param name="textWriter">Поток для вывода данных.</param>
 	public abstract void Write(ILogEntryWriter entryWriter, TextWriter textWriter);
 }
-
 
