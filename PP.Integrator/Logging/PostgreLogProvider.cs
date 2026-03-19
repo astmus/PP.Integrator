@@ -7,7 +7,7 @@ using Npgsql;
 namespace PP.Integrator.Logging
 {
 	[UnsupportedOSPlatform("browser")]
-	[ProviderAlias("PostgreLog")]
+	[ProviderAlias("Postgre")]
 	internal sealed class PostgreLogProvider : ILoggerProvider
 	{
 		private readonly IPostgreLoggingDataSourceAccessor _dataSourceAccessor;
@@ -25,7 +25,7 @@ namespace PP.Integrator.Logging
 			_rootFactory = rootFactory;
 		}
 
-		public PostgreLogProvider(IPostgreLoggingDataSourceAccessor dataSourceAccessor, IOptions<PostgreLoggerProviderOptions> options, IOptions<LoggerFilterOptions> loggerFilterOptions, IPostgreLoggerRootFactory rootFactory)
+		public PostgreLogProvider(IPostgreLoggingDataSourceAccessor dataSourceAccessor, IOptions<PostgreLoggerProviderOptions> options, IPostgreLoggerRootFactory rootFactory)
 			: this(dataSourceAccessor, options.Value, rootFactory)
 		{
 		}

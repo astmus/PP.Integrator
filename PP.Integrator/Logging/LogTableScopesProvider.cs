@@ -1,28 +1,23 @@
 using System.Collections.Concurrent;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 
 namespace PP.Integrator.Logging
 {
-	/// <inheritdoc/>
-	public class LogTableScopesProvider : IExternalScopeProvider
+	internal class LogTableScopesProvider : IExternalScopeProvider
 	{
 		private const string DefaultTable = "logs";
 		private const string DefaultLogTableName = "log";
 		private readonly AsyncLocal<TableScope?> _currentScope = new();
 
-		/// <summary>
-		/// Текущая целевая таблица
-		/// </summary>
 		internal TableScope? CurrentScope => _currentScope.Value;
 
-		/// <inheritdoc/>
 		public LogTableScopesProvider(bool withDefaultScope = true)
 		{
 			if (withDefaultScope)
 				_currentScope.Value = TableScope.CreateDefault(this);
 		}
 
-		/// <inheritdoc/>
 		public void ForEachScope<TState>(Action<object?, TState> callback, TState state)
 		{
 			void Iterate(TableScope? current)
@@ -36,7 +31,6 @@ namespace PP.Integrator.Logging
 			Iterate(_currentScope.Value);
 		}
 
-		/// <inheritdoc/>
 		public IDisposable Push(object? state)
 		{
 			var createdScope = new TableScope(this, _currentScope.Value, state);
@@ -44,12 +38,11 @@ namespace PP.Integrator.Logging
 			return createdScope;
 		}
 
-		internal class TableScope : ConcurrentQueue<LogRecord>, IDisposable
+		internal class TableScope : IDisposable
 		{
 			private static readonly string[] Columns = { "timestamp", "loglevel", "category", "message", "eventid", "exception", "originalformat", "state" };
 
 			private readonly LogTableScopesProvider _provider;
-			private bool _disposed;
 
 			internal static TableScope CreateDefault(LogTableScopesProvider provider) => new(provider, null, null, true);
 
@@ -58,7 +51,7 @@ namespace PP.Integrator.Logging
 			{
 			}
 
-			private TableScope(LogTableScopesProvider provider, TableScope? parent, object? tableName, bool isDefault)
+			private TableScope(LogTableScopesProvider provider, TableScope? parent, object? tableName, bool isDefault)// : base(maxBufferSize)			
 			{
 				_provider = provider;
 				Parent = parent;
@@ -102,15 +95,14 @@ namespace PP.Integrator.Logging
 
 			public override string ToString() => QualifiedTableName;
 
+			bool disposed;
 			public void Dispose()
 			{
-				if (_disposed)
-					return;
+				if (Volatile.Read(ref disposed)) return;
+				Volatile.Write(ref disposed, true);
 
 				if (ReferenceEquals(_provider._currentScope.Value, this))
 					_provider._currentScope.Value = Parent;
-
-				_disposed = true;
 			}
 		}
 	}

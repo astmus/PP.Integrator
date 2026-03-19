@@ -18,8 +18,9 @@ namespace PP.Integrator.Formatters
 		const int DefaultBufferSize = 1024;
 		const string DateFormat = "yyyy.MM.dd hh:mm:ss";
 		static readonly JsonWriterOptions _options = new JsonWriterOptions() { Indented = false };
-		public void Write<TState>(in LogEntry<TState> logEntry, TextWriter textWriter, object scope)
+		public void Write<TState>(in LogEntry<TState> logEntry, object scope)
 		{
+			TextWriter textWriter = null;
 			var scopeProvider = scope as IExternalScopeProvider;
 			if (logEntry.State is IReadOnlyList<KeyValuePair<string, object>> state)
 			{

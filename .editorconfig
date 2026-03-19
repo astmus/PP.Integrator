@@ -1,0 +1,27 @@
+root = true
+
+[*.cs]
+charset = utf-8
+indent_style = tab
+indent_size = tab
+tab_width = 4
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Компактное форматирование, где это читаемо
+csharp_preserve_single_line_blocks = true
+csharp_preserve_single_line_statements = true
+
+# Предпочтения по стилю
+csharp_prefer_braces = false:suggestion
+csharp_style_prefer_switch_expression = true:suggestion
+dotnet_style_prefer_collection_expression = true:suggestion
+
+# Поддержка ранних выходов и упрощений
+dotnet_style_object_initializer = true:suggestion
+dotnet_style_collection_initializer = true:suggestion
+dotnet_style_prefer_auto_properties = true:suggestion
+dotnet_style_prefer_simplified_boolean_expressions = true:suggestion
+dotnet_style_prefer_simplified_interpolation = true:suggestion
+

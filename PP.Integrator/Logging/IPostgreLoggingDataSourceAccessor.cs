@@ -1,5 +1,6 @@
 using Npgsql;
 
+namespace PP.Integrator.Logging;
 /// <summary>
 /// Предоставляет <see cref="NpgsqlDataSource" /> исключительно для инфраструктуры Postgre-логирования.
 /// </summary>

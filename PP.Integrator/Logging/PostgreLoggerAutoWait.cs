@@ -6,7 +6,7 @@ using PP.Integrator.Formatters;
 
 namespace PP.Integrator.Logging;
 
-internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
+internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase, ILogger
 {
 	private const int SHUTDOWN_JOIN_TIMEOUT_MS = 30000;
 
@@ -19,7 +19,7 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 
 #if DEBUG
 	int readedCount;
-	int writedCount;
+	int writedCount;	
 #endif
 
 	public PostgreLoggerAutoWait(string contextName, IPostgreLoggingDataSourceAccessor dataSourceAccessor, PostgreLoggerProviderOptions options)
@@ -47,7 +47,7 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 			WriteBatchSafely(source, batch, partitions, cancel);
 	}
 
-	protected override void EnqueueEntry(LogRecord entry)
+	internal override void EnqueueEntry(LogRecord entry)
 	{
 		var queue = _logQueue;
 		var cancel = _cancellation;
@@ -72,9 +72,9 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 #endif
 	}
 
-	public override void Flush()
+	protected override void FlushCore()
 	{
-		if (!TryDispose())
+		if (!TryBeginDispose())
 			return;
 
 #if DEBUG
@@ -156,7 +156,7 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 		{ }
 		catch (Exception error)
 		{
-			ReportLoggingError(nameof(PostgreLoggerAutoWait), error);
+			ReportLoggingError(error);
 		}
 	}
 
@@ -254,7 +254,7 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 		}
 		catch (Exception writeError)
 		{
-			ReportLoggingError(nameof(PostgreLoggerAutoWait), writeError);
+			ReportLoggingError(writeError);
 		}
 		finally
 		{
@@ -279,9 +279,9 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 				catch (Exception ex) when (IsTransientWriteError(ex) && attempt < WriteRetryCount)
 				{
 					lastError = ex;
-					ReportTransientWriteError(nameof(PostgreLoggerAutoWait), ex, "<batch>", attempt + 1, WriteRetryCount);
-					Thread.Sleep((attempt + 1) * 100);
-					attempt++;
+					ReportLoggingError((ex), $"attempt={+attempt}/{WriteRetryCount}");
+					cancel.WaitHandle.WaitOne(++attempt * 100);
+					cancel.ThrowIfCancellationRequested();
 				}
 				catch (Exception ex)
 				{
@@ -294,31 +294,31 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 		}
 		catch (Exception ex)
 		{
-			ReportLoggingError(nameof(PostgreLoggerAutoWait), ex);
+			ReportLoggingError(ex);
 		}
 	}
 
-	private void WritePartition(NpgsqlConnection conn, string tableName, List<LogRecord> items, CancellationToken cancel)
+	private void WritePartition(NpgsqlConnection connection, string tableName, List<LogRecord> items, CancellationToken cancel)
 	{
 		if (items.Count == 0)
 			return;
 
-		EnsureTableExists(tableName);
+		EnsureTableExists(connection, tableName);
 		var copyCommand = TableScopeResolver.BuildCopyCommand(tableName);
-		using var writer = conn.BeginBinaryImport(copyCommand);
-		var dbWriter = new BulkWriter(writer);
+		using var importer = connection.BeginBinaryImport(copyCommand);
+		var writer = new BulkWriter(importer);
 
 		foreach (var item in items)
 		{
 			if (cancel.IsCancellationRequested)
 				break;
 
-			item.Write(dbWriter, null!);
+			item.Write(writer);
 #if DEBUG
 			writedCount++;
 #endif
 		}
 
-		writer.Complete();
+		importer.Complete();
 	}
 }

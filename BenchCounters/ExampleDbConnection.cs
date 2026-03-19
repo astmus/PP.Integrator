@@ -10,7 +10,8 @@ internal static class ExampleDbConnection
 		builder.Port = 5432;
 		builder.Database = "postgres";
 		builder.Username = "postgres";
-		builder.Password = "postgres";
+		builder.Password = "postgre";
+		builder.CommandTimeout = 600;
 		builder.ConnectionIdleLifetime = 10;
 		builder.ConnectionPruningInterval = 10;
 		builder.Enlist = false;
@@ -19,10 +20,7 @@ internal static class ExampleDbConnection
 		builder.AutoPrepareMinUsages = 2;
 		builder.WriteBufferSize = 65536;
 		builder.Pooling = true;
-		builder.MinPoolSize = 5;
-		builder.MaxPoolSize = 10;
-#if DEBUG
-		builder.IncludeErrorDetail = true;
-#endif
+		builder.MinPoolSize = 2;
+		builder.MaxPoolSize = 8;
 	}
 }

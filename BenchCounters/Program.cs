@@ -1,7 +1,4 @@
-using Microsoft.Extensions.Logging;
 using PP.Integrator;
-using PP.Integrator.ChangeTracking;
-using PP.Integrator.Logging;
 
 namespace BenchCounters;
 
@@ -58,7 +55,7 @@ public class Program
 		}
 
 		var builder = Host.CreateApplicationBuilder();
-		builder.Logging.AddPostgreLogger(ExampleDbConnection.Configure).UseAutoWait();
+		builder.Logging.AddPostgreLogger(ExampleDbConnection.Configure).UseClassic();
 		builder.Services
 			.AddHostedService<LoggingExampleSecond>()
 			.AddHostedService<LoggingExampleTwoScopes>()
@@ -70,7 +67,7 @@ public class Program
 	private static void RunHost(Action<ILoggingBuilder> useLoggerKind)
 	{
 		var builder = Host.CreateApplicationBuilder();
-		builder.Logging.AddPostgreLogger(ExampleDbConnection.Configure);
+		builder.Logging.AddPostgreLogger(ExampleDbConnection.Configure).UseClassic();
 		useLoggerKind(builder.Logging);
 		builder.Services
 			.AddHostedService<LoggingExampleSecond>()

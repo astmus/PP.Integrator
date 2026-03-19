@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace PP.Integrator.ChangeTracking
@@ -65,7 +65,7 @@ namespace PP.Integrator.ChangeTracking
 			//	observer.OnError(item.Error);			
 		}
 
-		static readonly JsonSerializerOptions options = new JsonSerializerOptions()
+		static readonly JsonSerializerOptions options = new ()
 		{
 			PropertyNameCaseInsensitive = true,					
 			Converters =

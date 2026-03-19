@@ -8,6 +8,9 @@ using PP.Shared.Extensions;
 
 namespace PP.Integrator;
 
+/// <summary>
+/// Класс-расширение для регистрации логгера
+/// </summary>
 public static class IntegratorLoggerExtensions
 {
 	private const string STORED_PROCEDURE_COMPAT_MODE_SWITCH = "Npgsql.EnableStoredProcedureCompatMode";

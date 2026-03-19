@@ -14,6 +14,5 @@ public record LogRecord<TEntry>(LogEntry<TEntry> Entry, object Scope) : LogRecor
 	/// Записывает запись лога через указанный writer.
 	/// </summary>
 	/// <param name="entryWriter">Компонент, выполняющий запись.</param>
-	/// <param name="textWriter">Поток для вывода данных.</param>
-	public override void Write(ILogEntryWriter entryWriter, TextWriter textWriter) => entryWriter.Write(Entry, textWriter, Scope);
+	public override void Write(ILogEntryWriter entryWriter) => entryWriter.Write(Entry, Scope);
 }

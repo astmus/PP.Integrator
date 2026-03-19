@@ -22,7 +22,7 @@ namespace PP.Integrator.Logging
 			var logEntry = new LogRecord<TState>(new LogEntry<TState>(logLevel, _contextName, eventId, state, exception, formatter),
 				_parentLogger.ScopeProvider.CurrentScope);
 
-			_parentLogger.WriteEntry(logEntry);
+			_parentLogger.EnqueueEntry(logEntry);
 		}
 
 		public bool IsEnabled(LogLevel logLevel) =>
@@ -30,13 +30,10 @@ namespace PP.Integrator.Logging
 
 		public IDisposable BeginScope<TState>(TState state)
 		{
-			if (state is LogScope scope)
-				return _parentLogger.ScopeProvider.Push(scope.Table);
-
 			if (state is string tableName)
 				return _parentLogger.ScopeProvider.Push(tableName);
 
-			return _parentLogger.ScopeProvider.Push(state);
+			return _parentLogger.ScopeProvider.Push(state.ToString());
 		}
 	}
 }

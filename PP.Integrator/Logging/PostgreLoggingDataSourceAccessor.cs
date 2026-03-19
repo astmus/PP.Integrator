@@ -1,7 +1,7 @@
 using Npgsql;
 using PP.Shared.Extensions;
 
-
+namespace PP.Integrator.Logging;
 /// <summary>
 /// Создаёт и владеет <see cref="NpgsqlDataSource" /> для Postgre-логгера.
 /// </summary>

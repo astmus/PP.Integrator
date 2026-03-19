@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using PP.Integrator.Logging;
 
@@ -5,13 +6,14 @@ namespace PP.Integrator.Formatters;
 
 internal abstract class EntryWriter : ILogEntryWriter
 {
-	private const string OriginalFormatKey = "{OriginalFormat}";
+	protected static readonly JsonWriterOptions _jsonWriteroptions = new JsonWriterOptions() { Indented = false, SkipValidation = true };
+	protected const string OriginalFormatKey = "{OriginalFormat}";
 
 	public virtual void OnAfterEntryWrite() { }
 
 	public virtual void OnBeforeEntryWrite() { }
 
-	public void Write<TState>(in LogEntry<TState> logEntry, TextWriter textWriter, object scope)
+	public void Write<TState>(in LogEntry<TState> logEntry, object scope)
 	{
 		OnBeforeEntryWrite();
 		var message = logEntry.Formatter?.Invoke(logEntry.State, logEntry.Exception) ?? logEntry.State?.ToString();
@@ -27,7 +29,7 @@ internal abstract class EntryWriter : ILogEntryWriter
 		for (var i = 0; i < structuredState.Count; i++)
 		{
 			var item = structuredState[i];
-			if (!string.Equals(item.Key, OriginalFormatKey, StringComparison.Ordinal))
+			if (!string.Equals(item.Key, OriginalFormatKey, StringComparison.OrdinalIgnoreCase))
 				continue;
 
 			originalFormatIndex = i;

@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using BenchmarkDotNet.Running;
-using Microsoft.Extensions.Logging;
 using Npgsql;
 using PP.Integrator;
 
@@ -9,18 +8,18 @@ namespace BenchCounters;
 
 public static class LoggerBenchmarkRunner
 {
-	private const string BenchmarkScopeName = "logs_benchmark";
+	private const string BenchmarkScopeName = "benchmark";
 	private const string BenchmarkSchemaName = "logs";
-	private const string BenchmarkTableName = "logs_benchmark_log";
-	private const string BenchmarkQualifiedTableName = $"{BenchmarkSchemaName}.{BenchmarkTableName}";
-	private static readonly TimeSpan BenchmarkWindow = TimeSpan.FromMinutes(1);
-	private static readonly TimeSpan CountersWindow = TimeSpan.FromMinutes(1) + TimeSpan.FromSeconds(5);
+	private const string BenchmarkQualifiedTableName = $"{BenchmarkSchemaName}.{BenchmarkScopeName}";
+	private static readonly TimeSpan WarmupWindow = TimeSpan.FromSeconds(5);
+	private static readonly TimeSpan BenchmarkWindow = TimeSpan.FromSeconds(6);
+	private static readonly TimeSpan CountersWindow = WarmupWindow + BenchmarkWindow + TimeSpan.FromSeconds(5);
 	private static bool _environmentPrinted;
 
+	private static readonly string[] units = new[] { "B", "KB", "MB", "GB", "TB" };
 	private static string FormatBytes(long bytes)
 	{
 		var value = Math.Abs((double)bytes);
-		var units = new[] { "B", "KB", "MB", "GB", "TB" };
 		var unit = 0;
 		while (value >= 1024 && unit < units.Length - 1)
 		{
@@ -35,7 +34,7 @@ public static class LoggerBenchmarkRunner
 
 	private static string FormatNullableLong(long value) => value < 0 ? "n/a" : value.ToString("N0");
 
-	private static double GetMeanUsPerOp(ScenarioResult result) => result.Messages > 0 ? (result.DurationMs * 1000.0) / result.Messages : 0;
+	private static double GetMeanUsPerOp(ScenarioResult result) => result.Messages > 0 ? result.DurationMs * 1000.0 / result.Messages : 0;
 
 	private static void PrintBenchmarkEnvironmentIfNeeded()
 	{
@@ -49,6 +48,7 @@ public static class LoggerBenchmarkRunner
 		Console.WriteLine($"Arch: {RuntimeInformation.OSArchitecture} / Process {RuntimeInformation.ProcessArchitecture}");
 		Console.WriteLine($"CPU logical processors: {Environment.ProcessorCount}");
 		Console.WriteLine($"GC mode: {(System.Runtime.GCSettings.IsServerGC ? "Server" : "Workstation")}");
+		Console.WriteLine($"Process id: {Environment.ProcessId}");
 		Console.WriteLine("=============================");
 	}
 
@@ -119,14 +119,19 @@ public static class LoggerBenchmarkRunner
 		});
 
 		var logger = factory.CreateLogger($"benchmark-{title}");
-		using var scope = logger.BeginScope(BenchmarkScopeName);
-		var sw = Stopwatch.StartNew();
-		long messages = 0;
+		Warmup(logger, title);
 
-		while (sw.Elapsed < BenchmarkWindow)
+		var sw = Stopwatch.StartNew();
+		int messages = 0;
+		Exception ex = new ArgumentException("test exception", $"benchmark-{title}");
+
+		using (var scope = logger.BeginScope(BenchmarkScopeName))
 		{
-			logger.LogInformation("Benchmark mode={Mode} index={Index}", title, messages);
-			messages++;
+			while (sw.Elapsed < BenchmarkWindow)
+			{
+				logger.LogInformation((EventId)messages, ex, "Benchmark mode={Mode} index={Index}", title, messages);
+				messages++;
+			}
 		}
 
 		sw.Stop();
@@ -145,7 +150,7 @@ public static class LoggerBenchmarkRunner
 
 	private static void RunComparisonWithDotnetCounters()
 	{
-		Console.WriteLine("Running one-minute comparison. dotnet-counters starts in separate window per scenario.");
+		Console.WriteLine("Running comparison with warmup. dotnet-counters starts before warmup so the main measurement window is visible in the counters output.");
 		var readWhileWrite = RunScenarioWithCounters(builder => builder.UseClassic(), "read-while-write");
 		var autoWait = RunScenarioWithCounters(builder => builder.UseAutoWait(), "autowait");
 		PrintComparison(readWhileWrite, autoWait);
@@ -153,29 +158,136 @@ public static class LoggerBenchmarkRunner
 
 	private static void StartCountersSidecar(string title)
 	{
+		var durationArg = ToDurationArg(CountersWindow);
+		var pid = Environment.ProcessId;
+
+		if (!ToolExists("dotnet-counters"))
+		{
+			Console.WriteLine($"[{title}] dotnet-counters was not found in PATH. Install it with 'dotnet tool install -g dotnet-counters' or add a local tool manifest.");
+			Console.WriteLine($"[{title}] Manual command: dotnet-counters monitor --process-id {pid} --counters System.Runtime --refresh-interval 1 --duration {durationArg} --showDeltas");
+			return;
+		}
+
 		try
 		{
-			var durationArg = ToDurationArg(CountersWindow);
-			var pid = Environment.ProcessId;
-			var countersArgs =
-				$"monitor --process-id {pid} --counters System.Runtime --refresh-interval 1 --duration {durationArg} --showDeltas";
-			var psi = new ProcessStartInfo
+			var psi = OperatingSystem.IsWindows()
+				? CreateWindowsCountersStartInfo(pid, durationArg)
+				: CreateDirectCountersStartInfo(pid, durationArg);
+			var process = Process.Start(psi);
+			if (process == null)
 			{
-				FileName = "powershell",
-				UseShellExecute = false,
-				CreateNoWindow = true,
-				WorkingDirectory = AppContext.BaseDirectory
-			};
-			psi.ArgumentList.Add("-NoProfile");
-			psi.ArgumentList.Add("-Command");
-			psi.ArgumentList.Add($"Start-Process -FilePath 'dotnet-counters' -ArgumentList '{countersArgs}'");
-			Process.Start(psi);
-			Console.WriteLine($"[{title}] dotnet-counters opened in separate window (pid={pid}, duration={durationArg}).");
+				Console.WriteLine($"[{title}] dotnet-counters process was not created.");
+				return;
+			}
+
+			Console.WriteLine($"[{title}] dotnet-counters started for pid={pid}, duration={durationArg}.");
 		}
 		catch (Exception ex)
 		{
 			Console.WriteLine($"[{title}] Failed to start counters sidecar: {ex.Message}");
+			Console.WriteLine($"[{title}] Manual command: dotnet-counters monitor --process-id {pid} --counters System.Runtime --refresh-interval 1 --duration {durationArg} --showDeltas");
 		}
+	}
+
+	private static ProcessStartInfo CreateWindowsCountersStartInfo(int pid, string durationArg)
+	{
+		var args = BuildCountersArguments(pid, durationArg);
+		var psi = new ProcessStartInfo
+		{
+			FileName = "cmd.exe",
+			UseShellExecute = true,
+			WorkingDirectory = AppContext.BaseDirectory
+		};
+		psi.ArgumentList.Add("/c");
+		psi.ArgumentList.Add("start");
+		psi.ArgumentList.Add("dotnet-counters");
+		psi.ArgumentList.Add("dotnet-counters");
+		foreach (var arg in args)
+			psi.ArgumentList.Add(arg);
+
+		return psi;
+	}
+
+	private static ProcessStartInfo CreateDirectCountersStartInfo(int pid, string durationArg)
+	{
+		var psi = new ProcessStartInfo
+		{
+			FileName = "dotnet-counters",
+			UseShellExecute = true,
+			WorkingDirectory = AppContext.BaseDirectory
+		};
+		foreach (var arg in BuildCountersArguments(pid, durationArg))
+			psi.ArgumentList.Add(arg);
+
+		return psi;
+	}
+
+	private static string[] BuildCountersArguments(int pid, string durationArg) =>
+		new[]
+		{
+			"monitor",
+			"--process-id",
+			pid.ToString(),
+			"--counters",
+			"System.Runtime",
+			"--refresh-interval",
+			"1",
+			"--duration",
+			durationArg,
+			"--showDeltas"
+		};
+
+	private static bool ToolExists(string toolName)
+	{
+		try
+		{
+			var psi = OperatingSystem.IsWindows()
+				? new ProcessStartInfo
+				{
+					FileName = "where.exe",
+					UseShellExecute = false,
+					CreateNoWindow = true,
+					RedirectStandardOutput = true,
+					RedirectStandardError = true
+				}
+				: new ProcessStartInfo
+				{
+					FileName = "which",
+					UseShellExecute = false,
+					CreateNoWindow = true,
+					RedirectStandardOutput = true,
+					RedirectStandardError = true
+				};
+			psi.ArgumentList.Add(toolName);
+
+			using var process = Process.Start(psi);
+			if (process == null)
+				return false;
+
+			process.WaitForExit(3000);
+			return process.ExitCode == 0;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static void Warmup(ILogger logger, string title)
+	{
+		Console.WriteLine($"[{title}] Warmup started for {WarmupWindow.TotalSeconds:N0} s.");
+		var sw = Stopwatch.StartNew();
+		int messages = 0;
+
+		using var scope = logger.BeginScope(BenchmarkScopeName);
+		while (sw.Elapsed < WarmupWindow)
+		{
+			logger.LogInformation("Warmup mode={Mode} index={Index}", title, messages);
+			messages++;
+		}
+
+		sw.Stop();
+		Console.WriteLine($"[{title}] Warmup finished, sent {messages:N0} messages.");
 	}
 
 	private static string ToDurationArg(TimeSpan duration)
@@ -199,9 +311,12 @@ public static class LoggerBenchmarkRunner
 			using var conn = new NpgsqlConnection(csb.ConnectionString);
 			conn.Open();
 
+			using var command = conn.CreateCommand();
+			command.CommandText = $"ANALYZE {qualifiedTableName}";
+			command.ExecuteNonQuery();
+
 			using var cmd = conn.CreateCommand();
-			cmd.CommandText =
-				$"SELECT COUNT(*), COALESCE(pg_total_relation_size(@table_name::regclass), 0) FROM {BenchmarkQualifiedTableName}";
+			cmd.CommandText = $"SELECT COUNT(*), COALESCE(pg_total_relation_size(@table_name::regclass), 0) FROM {qualifiedTableName}";
 			cmd.Parameters.AddWithValue("table_name", qualifiedTableName);
 
 			using var reader = cmd.ExecuteReader();
@@ -214,8 +329,9 @@ public static class LoggerBenchmarkRunner
 				TotalRelationBytes = reader.GetInt64(1)
 			};
 		}
-		catch
+		catch (Exception ex)
 		{
+			Console.Error.WriteLine(ex.ToString());
 			return null;
 		}
 	}

@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using PP.Integrator.Logging;
 using static PP.Integrator.Logging.LogTableScopesProvider;
 
 internal static class TableScopeResolver

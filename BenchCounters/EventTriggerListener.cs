@@ -4,7 +4,7 @@ namespace BenchCounters
 {
 	internal class EventTriggerListener : ChangeConsumer<EventTrigger>
 	{
-		List<EventTrigger> triggers = new List<EventTrigger>();
+		List<EventTrigger> triggers = new ();
 
 		public override void OnCompleted() => throw new NotImplementedException();
 		public override void OnError(Exception error) => throw new NotImplementedException();

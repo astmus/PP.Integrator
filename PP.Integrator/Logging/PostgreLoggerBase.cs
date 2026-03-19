@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 
@@ -15,8 +16,9 @@ namespace PP.Integrator.Logging
 		private int _disposed;
 
 		protected long _lastErrorLogTicksUtc;
+		protected readonly PostgreLoggerProviderOptions Options;
 
-		internal LogTableScopesProvider ScopeProvider;
+		internal readonly LogTableScopesProvider ScopeProvider;
 
 		protected PostgreLoggerBase(string contextName, IPostgreLoggingDataSourceAccessor dataSourceAccessor, PostgreLoggerProviderOptions options)
 		{
@@ -27,7 +29,6 @@ namespace PP.Integrator.Logging
 			_ensureInitializedDelegate = EnsureInitialized;
 		}
 
-		protected PostgreLoggerProviderOptions Options { get; }
 		protected int MaxBufferItemsCount => Options.MaxBufferItemsCount;
 		protected int AutoFlushDuration => Options.AutoFlushDuration;
 		protected int WriteRetryCount => Options.WriteRetryCount;
@@ -43,36 +44,29 @@ namespace PP.Integrator.Logging
 			if (!IsEnabled(logLevel))
 				return;
 
+			if (!_ensureInitializedDelegate())
+				return;
+
 			var entry = new LogRecord<TState>(
 				new LogEntry<TState>(logLevel, _contextName, eventId, state, exception, formatter),
 				ScopeProvider.CurrentScope);
-
-			WriteEntry(entry);
-		}
-
-		internal void WriteEntry(LogRecord entry)
-		{
-			if (!_ensureInitializedDelegate())
-				return;
 
 			EnqueueEntry(entry);
 		}
 
 		private bool EnsureInitialized()
 		{
-			if (Volatile.Read(ref _disposed) == 1)
+			if (IsDisposed)
 				return false;
 
 			lock (_initLock)
 			{
-				if (_initialized || Volatile.Read(ref _disposed) == 1)
+				if (!_initialized && !IsDisposed)
 				{
-					_ensureInitializedDelegate = IsAlive;
-					return IsAlive();
+					InitializeCore();
+					_initialized = true;
 				}
 
-				InitializeCore();
-				_initialized = true;
 				_ensureInitializedDelegate = IsAlive;
 				return IsAlive();
 			}
@@ -81,31 +75,26 @@ namespace PP.Integrator.Logging
 		private bool IsAlive() =>
 			_initialized && Volatile.Read(ref _disposed) != 1;
 
-		protected void ReportLoggingError(string loggerName, Exception error)
+		protected void ReportLoggingError(Exception error,string message = default, [CallerMemberName] string loggerName = default)
 		{
+#if DEBUG
 			var nowTicks = DateTime.UtcNow.Ticks;
 			var prevTicks = Interlocked.Read(ref _lastErrorLogTicksUtc);
 			if (nowTicks - prevTicks < TimeSpan.FromSeconds(5).Ticks)
 				return;
 
 			Interlocked.Exchange(ref _lastErrorLogTicksUtc, nowTicks);
-			Console.Error.WriteLine($"[{loggerName}] {error.GetType().Name}: {error.Message}");
+			Console.Error.WriteLine($"[{loggerName}] {error.GetType().Name}: {error.Message} {message}");
+
+			if (error.InnerException is Exception e)
+				ReportLoggingError(e, message, loggerName);
+#endif
 		}
 
 		protected virtual bool IsTransientWriteError(Exception ex) =>
 			ex is NpgsqlException or TimeoutException or IOException;
 
-		protected static void ReportTransientWriteError(string loggerName, Exception error, string table, int attempt, int maxRetries)
-		{
-			Console.Error.WriteLine(
-				$"[{loggerName}][TransientWriteError] table='{table}', attempt={attempt}/{maxRetries}, type={error.GetType().FullName}, message={error.Message}");
-
-			if (error.InnerException != null)
-				Console.Error.WriteLine(
-					$"[{loggerName}][TransientWriteError][Inner] type={error.InnerException.GetType().FullName}, message={error.InnerException.Message}");
-		}
-
-		protected void EnsureTableExists(string qualifiedTableName)
+		protected static void EnsureTableExists(NpgsqlConnection connection, string qualifiedTableName)
 		{
 			lock (EnsuredTablesSync)
 			{
@@ -113,7 +102,8 @@ namespace PP.Integrator.Logging
 					return;
 
 				var indexName = qualifiedTableName.Replace('.', '_') + "_timestamp_brin_idx";
-				using var command = DataSource.CreateCommand(
+				using NpgsqlCommand cmd = connection.CreateCommand();
+				cmd.CommandText =
 					$"CREATE SCHEMA IF NOT EXISTS logs; " +
 					$"CREATE unlogged TABLE IF NOT EXISTS {qualifiedTableName} " +
 					"(timestamp TIMESTAMPTZ, " +
@@ -125,18 +115,58 @@ namespace PP.Integrator.Logging
 					"originalformat text, " +
 					"state JSONB); " +
 					$"CREATE INDEX IF NOT EXISTS {indexName} " +
-					$"ON {qualifiedTableName} USING brin (timestamp);");
-				command.ExecuteNonQuery();
+					$"ON {qualifiedTableName} USING brin (timestamp);";
+				cmd.ExecuteNonQuery();
 				EnsuredTables.Add(qualifiedTableName);
 			}
 		}
 
-		protected bool TryDispose() => Interlocked.Exchange(ref _disposed, 1) == 0;
+		protected bool TryBeginDispose() => Interlocked.Exchange(ref _disposed, 1) == 0;
 		protected bool IsDisposed => Volatile.Read(ref _disposed) == 1;
 
 		protected abstract void InitializeCore();
-		protected abstract void EnqueueEntry(LogRecord entry);
-		public abstract void Flush();
-		public void Dispose() => Flush();
+		internal abstract void EnqueueEntry(LogRecord entry);
+		protected abstract void FlushCore();
+		protected virtual void DisposeCore(bool disposing) { }
+
+		public void Flush()
+		{
+			if (IsDisposed)
+				return;
+
+			FlushCore();
+		}
+
+		public void Dispose()
+		{
+			Dispose(true);
+			GC.SuppressFinalize(this);
+		}
+
+		protected virtual void Dispose(bool disposing)
+		{
+			if (!TryBeginDispose() || !disposing)
+				return;
+
+			try
+			{
+				FlushCore();
+			}
+			catch (Exception ex)
+			{
+				ReportLoggingError(ex);
+			}
+			finally
+			{
+				try
+				{
+					DisposeCore(disposing);
+				}
+				catch (Exception ex)
+				{
+					ReportLoggingError(ex);
+				}
+			}
+		}
 	}
 }

@@ -20,7 +20,7 @@ namespace PP
 	{
 		private const char DefaultNestedTypeDelimiter = '+';
 
-		private static readonly Dictionary<Type, string> _builtInTypeNames = new Dictionary<Type, string>
+		private static readonly Dictionary<Type, string> _builtInTypeNames = new ()
 		{
 			{ typeof(void), "void" },
 			{ typeof(bool), "bool" },

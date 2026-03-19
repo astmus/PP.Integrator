@@ -13,7 +13,6 @@ public abstract record LogRecord(object Scope)
 	/// Записывает запись лога через указанный writer.
 	/// </summary>
 	/// <param name="entryWriter">Компонент, выполняющий запись.</param>
-	/// <param name="textWriter">Поток для вывода данных.</param>
-	public abstract void Write(ILogEntryWriter entryWriter, TextWriter textWriter);
+	public abstract void Write(ILogEntryWriter entryWriter);
 }
 

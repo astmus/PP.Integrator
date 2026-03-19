@@ -8,20 +8,19 @@ namespace PP.Integrator.Formatters;
 
 internal sealed class BulkWriter : EntryWriter
 {
-	private const string OriginalFormatKey = "{OriginalFormat}";
 	private const int ExceptionMaxDepth = 4;
 	private const int JsonBufferSize = 256;
 
-	private static readonly JsonSerializerOptions WriteOptions = new()
+	private static readonly JsonSerializerOptions _serializeOptions = new()
 	{
-		DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+		DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull, DefaultBufferSize = JsonBufferSize
 	};
 
-	private readonly NpgsqlBinaryImporter writer;
+	private NpgsqlBinaryImporter _importer;
 
-	public BulkWriter(NpgsqlBinaryImporter writer) => this.writer = writer;
+	public BulkWriter(NpgsqlBinaryImporter importer) => _importer = importer;
 
-	public override void OnBeforeEntryWrite() => writer.StartRow();
+	public override void OnBeforeEntryWrite() => _importer.StartRow();
 
 	private static string GetLogLevelName(in LogLevel logLevel) => logLevel switch
 	{
@@ -36,31 +35,33 @@ internal sealed class BulkWriter : EntryWriter
 
 	private void WriteJson(object? value)
 	{
-		if (value == null)
+		switch (value)
 		{
-			writer.WriteNull();
-			return;
-		}
+			case null:
+				_importer.WriteNull();
+				break;
 
-		if (value is IReadOnlyList<KeyValuePair<string, object?>> structuredState)
-		{
-			WriteStructuredState(structuredState);
-			return;
-		}
-		if (value is Exception exception)
-		{
-			WriteExceptionJson(exception);
-			return;
-		}
+			case IReadOnlyList<KeyValuePair<string, object?>> structuredState:
+				WriteStructuredState(structuredState);
+				break;
 
-		writer.Write(JsonSerializer.SerializeToUtf8Bytes(value, WriteOptions), NpgsqlDbType.Jsonb);
+			case Exception exception:
+				WriteExceptionJson(exception);
+				break;
+
+			default:
+				_importer.Write(JsonSerializer.SerializeToUtf8Bytes(value, _serializeOptions), NpgsqlDbType.Jsonb);
+				break;
+		}
 	}
 
 	private void WriteStructuredState(IReadOnlyList<KeyValuePair<string, object?>> structuredState)
 	{
 		var output = new ArrayBufferWriter<byte>(JsonBufferSize);
-		using var jsonWriter = new Utf8JsonWriter(output);
+		using var jsonWriter = new Utf8JsonWriter(output, _jsonWriteroptions);
+
 		jsonWriter.WriteStartObject();
+
 		for (var i = 0; i < structuredState.Count; i++)
 		{
 			var item = structuredState[i];
@@ -72,12 +73,15 @@ internal sealed class BulkWriter : EntryWriter
 
 		jsonWriter.WriteEndObject();
 		jsonWriter.Flush();
+
 #if NET8_0_OR_GREATER
-		writer.Write(output.WrittenMemory, NpgsqlDbType.Jsonb);
-#else
-		writer.Write(output.WrittenSpan.ToArray(), NpgsqlDbType.Jsonb);
+		_importer.Write(output.WrittenMemory, NpgsqlDbType.Jsonb);
+#else 
+		_importer.Write(output.WrittenMemory.ToArray(), NpgsqlDbType.Jsonb);
 #endif
 	}
+
+	
 
 	private void WriteExceptionJson(Exception exception)
 	{
@@ -86,9 +90,9 @@ internal sealed class BulkWriter : EntryWriter
 		WriteExceptionObject(jsonWriter, exception, 0);
 		jsonWriter.Flush();
 #if NET8_0_OR_GREATER
-		writer.Write(output.WrittenMemory, NpgsqlDbType.Jsonb);
+		_importer.Write(output.WrittenMemory, NpgsqlDbType.Jsonb);
 #else
-		writer.Write(output.WrittenSpan.ToArray(), NpgsqlDbType.Jsonb);
+		_importer.Write(output.WrittenSpan.ToArray(), NpgsqlDbType.Jsonb);
 #endif
 	}
 
@@ -170,7 +174,7 @@ internal sealed class BulkWriter : EntryWriter
 				break;
 			default:
 				jsonWriter.WritePropertyName(propertyName);
-				JsonSerializer.Serialize(jsonWriter, value, WriteOptions);
+				JsonSerializer.Serialize(jsonWriter, value, _serializeOptions);
 				break;
 		}
 	}
@@ -178,17 +182,14 @@ internal sealed class BulkWriter : EntryWriter
 	private void WriteText(string? value)
 	{
 		if (value == null)
-		{
-			writer.WriteNull();
-			return;
-		}
-
-		writer.Write(value);
+			_importer.WriteNull();
+		else
+			_importer.Write(value);
 	}
 
-	protected override void WriteContext(string context) => writer.Write(context);
+	protected override void WriteContext(string context) => _importer.Write(context);
 
-	protected override void WriteEventId(in EventId eventId) => writer.Write(eventId.Id, NpgsqlDbType.Integer);
+	protected override void WriteEventId(in EventId eventId) => _importer.Write(eventId.Id, NpgsqlDbType.Integer);
 
 	protected override void WriteException(Exception? exception) => WriteJson(exception);
 
@@ -201,7 +202,5 @@ internal sealed class BulkWriter : EntryWriter
 	protected override void WriteState(object? state) => WriteJson(state);
 
 	protected override void WriteTimestamp(in DateTimeOffset timestamp)
-	{
-		writer.Write(timestamp, NpgsqlDbType.TimestampTz);
-	}
+		=> _importer.Write(timestamp, NpgsqlDbType.TimestampTz);
 }
