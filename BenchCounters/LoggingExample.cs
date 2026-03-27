@@ -14,7 +14,7 @@ public class LoggingExample : BackgroundService
 	}
 
 	Rootobject[] objs;
-	public int inta = 0;
+	private int inta;
 
 	protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 	{
@@ -55,9 +55,9 @@ public class LoggingExample : BackgroundService
 			}
 			await Task.CompletedTask;
 		}
-		catch (Exception err)
+		catch (Exception error)
 		{
-			logger.LogError(err.Message, err);
+			logger.LogError(error, "log error");
 		}
 		sw.Stop();
 		Console.WriteLine(nameof(LoggingExampleSecond)+" Logging completed "+sw.Elapsed);
@@ -68,7 +68,7 @@ public class LoggingExample : BackgroundService
 	{
 		public string id { get; set; }
 		public int index { get; set; }
-		public Guid guid { get; set; }
+		public Guid uuid { get; set; }
 		public bool isActive { get; set; }
 		public string balance { get; set; }
 		public string picture { get; set; }

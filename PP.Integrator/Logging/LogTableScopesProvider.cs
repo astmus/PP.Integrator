@@ -8,6 +8,7 @@ namespace PP.Integrator.Logging
 	{
 		private const string DefaultTable = "logs";
 		private const string DefaultLogTableName = "log";
+
 		private readonly AsyncLocal<TableScope?> _currentScope = new();
 
 		internal TableScope? CurrentScope => _currentScope.Value;
@@ -20,15 +21,16 @@ namespace PP.Integrator.Logging
 
 		public void ForEachScope<TState>(Action<object?, TState> callback, TState state)
 		{
-			void Iterate(TableScope? current)
+			static void Iterate(TableScope? current, Action<object?, TState> callback, TState state)
 			{
 				if (current == null)
 					return;
 
-				Iterate(current.Parent);
+				Iterate(current.Parent, callback, state);
 				callback(current.State, state);
 			}
-			Iterate(_currentScope.Value);
+
+			Iterate(_currentScope.Value, callback, state);
 		}
 
 		public IDisposable Push(object? state)
@@ -38,25 +40,37 @@ namespace PP.Integrator.Logging
 			return createdScope;
 		}
 
-		internal class TableScope : IDisposable
+		private static readonly string[] Columns =
 		{
-			private static readonly string[] Columns = { "timestamp", "loglevel", "category", "message", "eventid", "exception", "originalformat", "state" };
+				"timestamp",
+				"loglevel",
+				"category",
+				"message",
+				"eventid",
+				"exception",
+				"originalformat",
+				"state"
+		};
 
+		internal sealed class TableScope : IDisposable
+		{
 			private readonly LogTableScopesProvider _provider;
+			private bool _disposed;
 
-			internal static TableScope CreateDefault(LogTableScopesProvider provider) => new(provider, null, null, true);
+			internal static TableScope CreateDefault(LogTableScopesProvider provider) =>
+				new(provider, null, null, true);
 
-			internal TableScope(LogTableScopesProvider provider, TableScope? parent, object? tableName)
-				: this(provider, parent, tableName, false)
+			internal TableScope(LogTableScopesProvider provider, TableScope? parent, object? state)
+				: this(provider, parent, state, false)
 			{
 			}
 
-			private TableScope(LogTableScopesProvider provider, TableScope? parent, object? tableName, bool isDefault)// : base(maxBufferSize)			
+			private TableScope(LogTableScopesProvider provider, TableScope? parent, object? state, bool isDefault)
 			{
 				_provider = provider;
 				Parent = parent;
-				State = tableName;
-				Segments = BuildSegments(parent, tableName, isDefault);
+				State = state;
+				Segments = BuildSegments(parent, state, isDefault);
 				QualifiedTableName = CreateQualifiedTableName(Segments);
 				CopyCommand = string.Intern($"COPY  {QualifiedTableName} ({string.Join(',', Columns)}) FROM STDIN (FORMAT BINARY)");
 			}
@@ -71,20 +85,20 @@ namespace PP.Integrator.Logging
 
 			public string CopyCommand { get; }
 
-			private static string[] BuildSegments(TableScope? parent, object? tableName, bool isDefault)
+			private static string[] BuildSegments(TableScope? parent, object? state, bool isDefault)
 			{
 				if (isDefault)
 					return Array.Empty<string>();
 
-				var normalized = tableName?.ToString();
-				if (string.IsNullOrWhiteSpace(normalized))
-					normalized = DefaultLogTableName;
+				if (state is not string segment || string.IsNullOrWhiteSpace(segment))
+					return parent?.Segments ?? new[] { DefaultLogTableName };
+
 				if (parent == null || parent.Segments.Length == 0)
-					return new[] { normalized };
+					return new[] { segment };
 
 				var result = new string[parent.Segments.Length + 1];
 				Array.Copy(parent.Segments, result, parent.Segments.Length);
-				result[^1] = normalized;
+				result[^1] = segment;
 				return result;
 			}
 
@@ -95,11 +109,12 @@ namespace PP.Integrator.Logging
 
 			public override string ToString() => QualifiedTableName;
 
-			bool disposed;
 			public void Dispose()
 			{
-				if (Volatile.Read(ref disposed)) return;
-				Volatile.Write(ref disposed, true);
+				if (Volatile.Read(ref _disposed))
+					return;
+
+				Volatile.Write(ref _disposed, true);
 
 				if (ReferenceEquals(_provider._currentScope.Value, this))
 					_provider._currentScope.Value = Parent;

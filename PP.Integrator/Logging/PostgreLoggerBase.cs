@@ -4,9 +4,8 @@ using Npgsql;
 
 namespace PP.Integrator.Logging
 {
-	internal abstract class PostgreLoggerBase : ILogger, IDisposable
+	internal abstract class PostgreLoggerBase : IDisposable
 	{
-		private readonly string _contextName;
 		protected readonly NpgsqlDataSource DataSource;
 		private readonly object _initLock = new();
 		private static readonly object EnsuredTablesSync = new();
@@ -20,9 +19,8 @@ namespace PP.Integrator.Logging
 
 		internal readonly LogTableScopesProvider ScopeProvider;
 
-		protected PostgreLoggerBase(string contextName, IPostgreLoggingDataSourceAccessor dataSourceAccessor, PostgreLoggerProviderOptions options)
+		protected PostgreLoggerBase(IPostgreLoggingDataSourceAccessor dataSourceAccessor, PostgreLoggerProviderOptions options)
 		{
-			_contextName = contextName;
 			DataSource = dataSourceAccessor.DataSource;
 			Options = options;
 			ScopeProvider = new LogTableScopesProvider(withDefaultScope: true);
@@ -33,25 +31,24 @@ namespace PP.Integrator.Logging
 		protected int AutoFlushDuration => Options.AutoFlushDuration;
 		protected int WriteRetryCount => Options.WriteRetryCount;
 
-		public IDisposable BeginScope<TState>(TState state) =>
-			ScopeProvider.Push(state);
+		[System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "<Pending>")]
+		public bool IsEnabled(LogLevel logLevel) =>
+			logLevel != LogLevel.None;
 
-		public bool IsEnabled(LogLevel logLevel)
-			=> logLevel != LogLevel.None;
-
-		public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+		internal void WriteEntry(LogRecord entry)
 		{
-			if (!IsEnabled(logLevel))
+			if (!EnsureCanWrite())
 				return;
-
-			if (!_ensureInitializedDelegate())
-				return;
-
-			var entry = new LogRecord<TState>(
-				new LogEntry<TState>(logLevel, _contextName, eventId, state, exception, formatter),
-				ScopeProvider.CurrentScope);
 
 			EnqueueEntry(entry);
+		}
+
+		private bool EnsureCanWrite()
+		{
+			if (!_ensureInitializedDelegate())
+				return false;
+
+			return true;
 		}
 
 		private bool EnsureInitialized()
@@ -75,7 +72,7 @@ namespace PP.Integrator.Logging
 		private bool IsAlive() =>
 			_initialized && Volatile.Read(ref _disposed) != 1;
 
-		protected void ReportLoggingError(Exception error,string message = default, [CallerMemberName] string loggerName = default)
+		protected void ReportLoggingError(Exception error, string message = default, [CallerMemberName] string loggerName = default)
 		{
 #if DEBUG
 			var nowTicks = DateTime.UtcNow.Ticks;
@@ -125,7 +122,7 @@ namespace PP.Integrator.Logging
 		protected bool IsDisposed => Volatile.Read(ref _disposed) == 1;
 
 		protected abstract void InitializeCore();
-		internal abstract void EnqueueEntry(LogRecord entry);
+		protected abstract void EnqueueEntry(LogRecord entry);
 		protected abstract void FlushCore();
 		protected virtual void DisposeCore(bool disposing) { }
 

@@ -24,8 +24,8 @@ internal sealed partial class PostgreLoggerClassic : PostgreLoggerBase
 	private int _writedCount;
 #endif
 
-	public PostgreLoggerClassic(string contextName, IPostgreLoggingDataSourceAccessor source, PostgreLoggerProviderOptions options)
-		: base(contextName, source, options)
+	public PostgreLoggerClassic(IPostgreLoggingDataSourceAccessor source, PostgreLoggerProviderOptions options)
+	: base(source, options)
 	{
 	}
 
@@ -97,7 +97,7 @@ internal sealed partial class PostgreLoggerClassic : PostgreLoggerBase
 		}
 	}
 
-	internal override void EnqueueEntry(LogRecord entry)
+	protected override void EnqueueEntry(LogRecord entry)
 	{
 		while (!(IsDisposed || _shutdown.IsCancellationRequested || _batchBuffer.Completion.IsCompleted)
 			&& !_batchBuffer.Post(entry))

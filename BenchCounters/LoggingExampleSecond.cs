@@ -5,7 +5,7 @@ public class LoggingExampleSecond : BackgroundService
 	private ILogger<Status> statusLogger;
 	private ILogger<Project> projectLogger;
 	private readonly ILogger<LoggingExampleSecond> _log3;
-	public int inta = 0;
+	private int inta;
 
 	public LoggingExampleSecond(ILogger<Status> log, ILogger<Project> log2, ILogger<LoggingExampleSecond> log3)
 	{
@@ -57,7 +57,7 @@ public class LoggingExampleSecond : BackgroundService
 		}
 		catch (Exception err)
 		{
-			statusLogger.LogError(err.Message, err);
+			statusLogger.LogError(err, "log error");
 		}
 
 		Console.WriteLine(nameof(LoggingExampleSecond) + " Logging completed" + inta);

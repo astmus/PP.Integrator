@@ -1,5 +1,4 @@
 using BenchmarkDotNet.Attributes;
-using Microsoft.Extensions.Logging;
 using PP.Integrator;
 
 namespace BenchCounters;
@@ -21,7 +20,10 @@ public class AutoWaitFocusedBenchmarkDotNet
 	public void AutoWaitMixedTablesSimple()
 	{
 		for (var i = 0; i < Operations; i++)
-			_mixedTableLoggers[i & 3].LogInformation("BDN autowait mixed-table message {Index}", i);
+		{
+			var payload = _payloads[i & 63];
+			_mixedTableLoggers[i & 3].LogInformation("BDN autowait mixed-table payload {PayloadId} tags {TagsCount} checksum {Checksum} details {Payload}", payload.Id, payload.Tags.Length, payload.Checksum, payload);
+		}
 	}
 
 	[Benchmark]
@@ -38,7 +40,10 @@ public class AutoWaitFocusedBenchmarkDotNet
 	public void AutoWaitSingleTableSimple()
 	{
 		for (var i = 0; i < Operations; i++)
-			_singleTableLogger.LogInformation("BDN autowait single-table message {Index}", i);
+		{
+			var payload = _payloads[i & 63];
+			_singleTableLogger.LogInformation("BDN autowait single-table payload {PayloadId} tags {TagsCount} checksum {Checksum} details {Payload}", payload.Id, payload.Tags.Length, payload.Checksum, payload);
+		}
 	}
 
 	[GlobalCleanup]

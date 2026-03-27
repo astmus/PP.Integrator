@@ -6,7 +6,7 @@ using PP.Integrator.Formatters;
 
 namespace PP.Integrator.Logging;
 
-internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase, ILogger
+internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase
 {
 	private const int SHUTDOWN_JOIN_TIMEOUT_MS = 30000;
 
@@ -19,11 +19,13 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase, ILogger
 
 #if DEBUG
 	int readedCount;
-	int writedCount;	
+	int writedCount;
 #endif
 
-	public PostgreLoggerAutoWait(string contextName, IPostgreLoggingDataSourceAccessor dataSourceAccessor, PostgreLoggerProviderOptions options)
-		: base(contextName, dataSourceAccessor, options) { }
+	public PostgreLoggerAutoWait(IPostgreLoggingDataSourceAccessor source, PostgreLoggerProviderOptions options)
+	: base(source, options)
+	{
+	}
 
 	private static void ClearPartitions(Dictionary<string, List<LogRecord>> partitions)
 	{
@@ -47,7 +49,7 @@ internal sealed partial class PostgreLoggerAutoWait : PostgreLoggerBase, ILogger
 			WriteBatchSafely(source, batch, partitions, cancel);
 	}
 
-	internal override void EnqueueEntry(LogRecord entry)
+	protected override void EnqueueEntry(LogRecord entry)
 	{
 		var queue = _logQueue;
 		var cancel = _cancellation;

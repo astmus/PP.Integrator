@@ -17,6 +17,9 @@ public class Program
 			case "bench-bdn-autowait":
 				LoggerBenchmarkRunner.RunAutoWaitFocusedBenchmarkDotNet();
 				return true;
+			case "bench-bdn-sustained":
+				LoggerBenchmarkRunner.RunSustainedLoadBenchmarkDotNet();
+				return true;
 			case "bench-compare":
 				LoggerBenchmarkRunner.RunComparison();
 				return true;
@@ -55,6 +58,7 @@ public class Program
 		}
 
 		var builder = Host.CreateApplicationBuilder();
+		builder.Logging.ClearProviders();
 		builder.Logging.AddPostgreLogger(ExampleDbConnection.Configure).UseClassic();
 		builder.Services
 			.AddHostedService<LoggingExampleSecond>()
@@ -67,6 +71,7 @@ public class Program
 	private static void RunHost(Action<ILoggingBuilder> useLoggerKind)
 	{
 		var builder = Host.CreateApplicationBuilder();
+		builder.Logging.ClearProviders();
 		builder.Logging.AddPostgreLogger(ExampleDbConnection.Configure).UseClassic();
 		useLoggerKind(builder.Logging);
 		builder.Services

@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using BenchmarkDotNet.Running;
 using Npgsql;
 using PP.Integrator;
 
@@ -11,10 +10,9 @@ public static class LoggerBenchmarkRunner
 	private const string BenchmarkScopeName = "benchmark";
 	private const string BenchmarkSchemaName = "logs";
 	private const string BenchmarkQualifiedTableName = $"{BenchmarkSchemaName}.{BenchmarkScopeName}";
-	private static readonly TimeSpan WarmupWindow = TimeSpan.FromSeconds(5);
+	private static readonly BenchmarkPayload[] ScenarioPayloads = Enumerable.Range(0, 64).Select(BenchmarkPayload.Create).ToArray();
 	private static readonly TimeSpan BenchmarkWindow = TimeSpan.FromSeconds(6);
-	private static readonly TimeSpan CountersWindow = WarmupWindow + BenchmarkWindow + TimeSpan.FromSeconds(5);
-	private static bool _environmentPrinted;
+	private static bool _environmentPrinted = true;
 
 	private static readonly string[] units = new[] { "B", "KB", "MB", "GB", "TB" };
 	private static string FormatBytes(long bytes)
@@ -88,11 +86,13 @@ public static class LoggerBenchmarkRunner
 		RunScenarioWithCounters(builder => builder.UseAutoWait(), "autowait");
 
 	public static void RunAutoWaitFocusedBenchmarkDotNet() =>
-		BenchmarkRunner.Run<AutoWaitFocusedBenchmarkDotNet>();
+		ReadableBenchmarkRunner.Run<AutoWaitFocusedBenchmarkDotNet>();
 
 	public static void RunAutoWaitDirect() => RunScenario(builder => builder.UseAutoWait(), "autowait");
 
-	public static void RunBenchmarkDotNet() => BenchmarkRunner.Run<LoggerBenchmarkDotNet>();
+	public static void RunBenchmarkDotNet() => ReadableBenchmarkRunner.Run<LoggerBenchmarkDotNet>();
+
+	public static void RunSustainedLoadBenchmarkDotNet() => ReadableBenchmarkRunner.Run<SustainedLoadBenchmarkDotNet>();
 
 	public static void RunComparison() => RunComparisonWithDotnetCounters();
 
@@ -100,11 +100,7 @@ public static class LoggerBenchmarkRunner
 
 	public static void RunReadWhileWriteDirect() => RunScenario(builder => builder.UseClassic(), "read-while-write");
 
-	private static ScenarioResult RunScenarioWithCounters(Action<ILoggingBuilder> useLoggerKind, string title)
-	{
-		StartCountersSidecar(title);
-		return RunScenario(useLoggerKind, title);
-	}
+	private static ScenarioResult RunScenarioWithCounters(Action<ILoggingBuilder> useLoggerKind, string title) => RunScenario(useLoggerKind, title);
 
 	private static ScenarioResult RunScenario(Action<ILoggingBuilder> useLoggerKind, string title)
 	{
@@ -119,7 +115,6 @@ public static class LoggerBenchmarkRunner
 		});
 
 		var logger = factory.CreateLogger($"benchmark-{title}");
-		Warmup(logger, title);
 
 		var sw = Stopwatch.StartNew();
 		int messages = 0;
@@ -129,7 +124,8 @@ public static class LoggerBenchmarkRunner
 		{
 			while (sw.Elapsed < BenchmarkWindow)
 			{
-				logger.LogInformation((EventId)messages, ex, "Benchmark mode={Mode} index={Index}", title, messages);
+				var payload = ScenarioPayloads[messages & 63];
+				logger.LogInformation((EventId)messages, ex, "Benchmark mode={Mode} index={Index} payload {PayloadId} tags {TagsCount} checksum {Checksum} details {Payload}", title, messages, payload.Id, payload.Tags.Length, payload.Checksum, payload);
 				messages++;
 			}
 		}
@@ -154,152 +150,6 @@ public static class LoggerBenchmarkRunner
 		var readWhileWrite = RunScenarioWithCounters(builder => builder.UseClassic(), "read-while-write");
 		var autoWait = RunScenarioWithCounters(builder => builder.UseAutoWait(), "autowait");
 		PrintComparison(readWhileWrite, autoWait);
-	}
-
-	private static void StartCountersSidecar(string title)
-	{
-		var durationArg = ToDurationArg(CountersWindow);
-		var pid = Environment.ProcessId;
-
-		if (!ToolExists("dotnet-counters"))
-		{
-			Console.WriteLine($"[{title}] dotnet-counters was not found in PATH. Install it with 'dotnet tool install -g dotnet-counters' or add a local tool manifest.");
-			Console.WriteLine($"[{title}] Manual command: dotnet-counters monitor --process-id {pid} --counters System.Runtime --refresh-interval 1 --duration {durationArg} --showDeltas");
-			return;
-		}
-
-		try
-		{
-			var psi = OperatingSystem.IsWindows()
-				? CreateWindowsCountersStartInfo(pid, durationArg)
-				: CreateDirectCountersStartInfo(pid, durationArg);
-			var process = Process.Start(psi);
-			if (process == null)
-			{
-				Console.WriteLine($"[{title}] dotnet-counters process was not created.");
-				return;
-			}
-
-			Console.WriteLine($"[{title}] dotnet-counters started for pid={pid}, duration={durationArg}.");
-		}
-		catch (Exception ex)
-		{
-			Console.WriteLine($"[{title}] Failed to start counters sidecar: {ex.Message}");
-			Console.WriteLine($"[{title}] Manual command: dotnet-counters monitor --process-id {pid} --counters System.Runtime --refresh-interval 1 --duration {durationArg} --showDeltas");
-		}
-	}
-
-	private static ProcessStartInfo CreateWindowsCountersStartInfo(int pid, string durationArg)
-	{
-		var args = BuildCountersArguments(pid, durationArg);
-		var psi = new ProcessStartInfo
-		{
-			FileName = "cmd.exe",
-			UseShellExecute = true,
-			WorkingDirectory = AppContext.BaseDirectory
-		};
-		psi.ArgumentList.Add("/c");
-		psi.ArgumentList.Add("start");
-		psi.ArgumentList.Add("dotnet-counters");
-		psi.ArgumentList.Add("dotnet-counters");
-		foreach (var arg in args)
-			psi.ArgumentList.Add(arg);
-
-		return psi;
-	}
-
-	private static ProcessStartInfo CreateDirectCountersStartInfo(int pid, string durationArg)
-	{
-		var psi = new ProcessStartInfo
-		{
-			FileName = "dotnet-counters",
-			UseShellExecute = true,
-			WorkingDirectory = AppContext.BaseDirectory
-		};
-		foreach (var arg in BuildCountersArguments(pid, durationArg))
-			psi.ArgumentList.Add(arg);
-
-		return psi;
-	}
-
-	private static string[] BuildCountersArguments(int pid, string durationArg) =>
-		new[]
-		{
-			"monitor",
-			"--process-id",
-			pid.ToString(),
-			"--counters",
-			"System.Runtime",
-			"--refresh-interval",
-			"1",
-			"--duration",
-			durationArg,
-			"--showDeltas"
-		};
-
-	private static bool ToolExists(string toolName)
-	{
-		try
-		{
-			var psi = OperatingSystem.IsWindows()
-				? new ProcessStartInfo
-				{
-					FileName = "where.exe",
-					UseShellExecute = false,
-					CreateNoWindow = true,
-					RedirectStandardOutput = true,
-					RedirectStandardError = true
-				}
-				: new ProcessStartInfo
-				{
-					FileName = "which",
-					UseShellExecute = false,
-					CreateNoWindow = true,
-					RedirectStandardOutput = true,
-					RedirectStandardError = true
-				};
-			psi.ArgumentList.Add(toolName);
-
-			using var process = Process.Start(psi);
-			if (process == null)
-				return false;
-
-			process.WaitForExit(3000);
-			return process.ExitCode == 0;
-		}
-		catch
-		{
-			return false;
-		}
-	}
-
-	private static void Warmup(ILogger logger, string title)
-	{
-		Console.WriteLine($"[{title}] Warmup started for {WarmupWindow.TotalSeconds:N0} s.");
-		var sw = Stopwatch.StartNew();
-		int messages = 0;
-
-		using var scope = logger.BeginScope(BenchmarkScopeName);
-		while (sw.Elapsed < WarmupWindow)
-		{
-			logger.LogInformation("Warmup mode={Mode} index={Index}", title, messages);
-			messages++;
-		}
-
-		sw.Stop();
-		Console.WriteLine($"[{title}] Warmup finished, sent {messages:N0} messages.");
-	}
-
-	private static string ToDurationArg(TimeSpan duration)
-	{
-		var totalSeconds = (int)Math.Ceiling(duration.TotalSeconds);
-		var days = totalSeconds / 86400;
-		totalSeconds -= days * 86400;
-		var hours = totalSeconds / 3600;
-		totalSeconds -= hours * 3600;
-		var minutes = totalSeconds / 60;
-		var seconds = totalSeconds - (minutes * 60);
-		return $"{days:00}:{hours:00}:{minutes:00}:{seconds:00}";
 	}
 
 	private static DbStats? TryReadDbStats(string qualifiedTableName)

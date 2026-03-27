@@ -40,7 +40,7 @@ namespace PP.Integrator.Logging
 
 		private ILogger CreateDelegatedLogger(string categoryName)
 		{
-			var root = EnsureRootLogger(categoryName);
+			var root = EnsureRootLogger();
 			return new PostgreDelegatedLogger(categoryName, root);
 		}
 
@@ -57,7 +57,7 @@ namespace PP.Integrator.Logging
 #endif
 		}
 
-		private PostgreLoggerBase EnsureRootLogger(string categoryName)
+		private PostgreLoggerBase EnsureRootLogger()
 		{
 			var existing = Volatile.Read(ref _rootLogger);
 			if (existing != null)
@@ -69,7 +69,7 @@ namespace PP.Integrator.Logging
 				if (existing != null)
 					return existing;
 
-				existing = _rootFactory.CreateRootLogger(categoryName, _dataSourceAccessor, _options);
+				existing = _rootFactory.CreateRootLogger(_dataSourceAccessor, _options);
 				_rootLogger = existing;
 				return existing;
 			}

@@ -85,6 +85,7 @@ internal sealed class BulkWriter : EntryWriter
 
 	private void WriteExceptionJson(Exception exception)
 	{
+		//ArrayPool<byte>.Shared.Rent(JsonBufferSize);
 		var output = new ArrayBufferWriter<byte>(JsonBufferSize);
 		using var jsonWriter = new Utf8JsonWriter(output);
 		WriteExceptionObject(jsonWriter, exception, 0);

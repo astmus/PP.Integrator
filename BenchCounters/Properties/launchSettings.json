@@ -40,6 +40,14 @@
         "DOTNET_ENVIRONMENT": "Development"
       }
     },
+    "Bench DotNet Sustained 6s": {
+      "commandName": "Project",
+      "commandLineArgs": "bench-bdn-sustained",
+      "dotnetRunMessages": true,
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    },
     "Run Host ReadWhileWrite": {
       "commandName": "Project",
       "commandLineArgs": "run-readwhilewrite",
