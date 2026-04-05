@@ -1,4 +1,5 @@
 using BenchmarkDotNet.Attributes;
+using Npgsql;
 using PP.Integrator;
 
 namespace BenchCounters;
@@ -6,67 +7,69 @@ namespace BenchCounters;
 [MemoryDiagnoser]
 public class LoggerBenchmarkDotNet
 {
-	private IDisposable _autoWaitScope = default!;
-	private ILogger _autoWaitLogger = default!;
-	private ILoggerFactory _autoWaitFactory = default!;
-	private IDisposable _classicScope = default!;
-	private ILogger _classicLogger = default!;
-	private ILoggerFactory _classicFactory = default!;
+	private const string DataFlowTableName = "logs.dataflow";
+
+	private IDisposable _scope = default!;
+	private ILogger _logger = default!;
+	private ILoggerFactory _factory = default!;
 	private BenchmarkPayload[] _payloads = default!;
 
 	[Params(10_000)]
 	public int Operations { get; set; }
 
-	[Benchmark]
-	public void AutoWait()
+	[Benchmark(Baseline = true)]
+	public void DataFlow()
 	{
 		for (var i = 0; i < Operations; i++)
 		{
 			var payload = _payloads[i & 63];
-			_autoWaitLogger.LogInformation("BDN autowait payload {PayloadId} tags {TagsCount} checksum {Checksum} details {Payload}", payload.Id, payload.Tags.Length, payload.Checksum, payload);
+			_logger.LogInformation("BDN dataflow payload {PayloadId} tags {TagsCount} checksum {Checksum} details {Payload}", payload.Id, payload.Tags.Length, payload.Checksum, payload);
 		}
 	}
 
 	[GlobalCleanup]
 	public void Cleanup()
 	{
-		_classicScope.Dispose();
-		_autoWaitScope.Dispose();
-		_classicFactory.Dispose();
-		_autoWaitFactory.Dispose();
-	}
-
-	[Benchmark(Baseline = true)]
-	public void ReadWhileWrite()
-	{
-		for (var i = 0; i < Operations; i++)
-		{
-			var payload = _payloads[i & 63];
-			_classicLogger.LogInformation("BDN classic payload {PayloadId} tags {TagsCount} checksum {Checksum} details {Payload}", payload.Id, payload.Tags.Length, payload.Checksum, payload);
-		}
+		_scope.Dispose();
+		_factory.Dispose();
 	}
 
 	[GlobalSetup]
 	public void Setup()
 	{
-		_classicFactory = LoggerFactory.Create(builder =>
+		TruncateBenchmarkTable();
+		_factory = LoggerFactory.Create(builder =>
 		{
 			builder.ClearProviders();
 			builder.AddPostgreLogger(ExampleDbConnection.Configure);
-			builder.UseClassic();
 		});
 
-		_autoWaitFactory = LoggerFactory.Create(builder =>
-		{
-			builder.ClearProviders();
-			builder.AddPostgreLogger(ExampleDbConnection.Configure);
-			builder.UseAutoWait();
-		});
-
-		_classicLogger = _classicFactory.CreateLogger("bdn-read-while-write");
-		_autoWaitLogger = _autoWaitFactory.CreateLogger("bdn-autowait");
-		_classicScope = _classicLogger.BeginScope("benchmark_c");
-		_autoWaitScope = _autoWaitLogger.BeginScope("benchmark_a");
+		_logger = _factory.CreateLogger("bdn-dataflow");
+		_scope = _logger.BeginScope("dataflow");
 		_payloads = Enumerable.Range(0, 64).Select(BenchmarkPayload.Create).ToArray();
+	}
+
+	private static void TruncateBenchmarkTable()
+	{
+		var csb = new NpgsqlConnectionStringBuilder();
+		ExampleDbConnection.Configure(csb);
+
+		using var connection = new NpgsqlConnection(csb.ConnectionString);
+		connection.Open();
+
+		if (!TableExists(connection, DataFlowTableName))
+			return;
+
+		using var truncateCommand = connection.CreateCommand();
+		truncateCommand.CommandText = $"TRUNCATE TABLE {DataFlowTableName}";
+		truncateCommand.ExecuteNonQuery();
+	}
+
+	private static bool TableExists(NpgsqlConnection connection, string tableName)
+	{
+		using var existsCommand = connection.CreateCommand();
+		existsCommand.CommandText = "SELECT to_regclass(@table_name)::text";
+		existsCommand.Parameters.AddWithValue("table_name", tableName);
+		return existsCommand.ExecuteScalar() is string;
 	}
 }

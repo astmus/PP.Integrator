@@ -1,64 +1,17 @@
 {
   "$schema": "http://json.schemastore.org/launchsettings.json",
   "profiles": {
-    "BenchCounters": {
+    "App": {
       "commandName": "Project",
+      "commandLineArgs": "app",
       "dotnetRunMessages": true,
       "environmentVariables": {
         "DOTNET_ENVIRONMENT": "Development"
       }
     },
-    "Bench ReadWhileWrite 1m": {
+    "Benchmark": {
       "commandName": "Project",
-      "commandLineArgs": "bench-readwhilewrite",
-      "dotnetRunMessages": true,
-      "environmentVariables": {
-        "DOTNET_ENVIRONMENT": "Development"
-      }
-    },
-    "Bench AutoWait 1m": {
-      "commandName": "Project",
-      "commandLineArgs": "bench-new",
-      "dotnetRunMessages": true,
-      "environmentVariables": {
-        "DOTNET_ENVIRONMENT": "Development"
-      }
-    },
-    "Bench Compare 2x1m": {
-      "commandName": "Project",
-      "commandLineArgs": "bench-compare",
-      "dotnetRunMessages": true,
-      "environmentVariables": {
-        "DOTNET_ENVIRONMENT": "Development"
-      }
-    },
-    "Bench DotNetBenchmark": {
-      "commandName": "Project",
-      "commandLineArgs": "bench-bdn",
-      "dotnetRunMessages": true,
-      "environmentVariables": {
-        "DOTNET_ENVIRONMENT": "Development"
-      }
-    },
-    "Bench DotNet Sustained 6s": {
-      "commandName": "Project",
-      "commandLineArgs": "bench-bdn-sustained",
-      "dotnetRunMessages": true,
-      "environmentVariables": {
-        "DOTNET_ENVIRONMENT": "Development"
-      }
-    },
-    "Run Host ReadWhileWrite": {
-      "commandName": "Project",
-      "commandLineArgs": "run-readwhilewrite",
-      "dotnetRunMessages": true,
-      "environmentVariables": {
-        "DOTNET_ENVIRONMENT": "Development"
-      }
-    },
-    "Run Host AutoWait": {
-      "commandName": "Project",
-      "commandLineArgs": "run-new",
+      "commandLineArgs": "bench",
       "dotnetRunMessages": true,
       "environmentVariables": {
         "DOTNET_ENVIRONMENT": "Development"
@@ -66,3 +19,5 @@
     }
   }
 }
+
+

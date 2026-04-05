@@ -1,8 +1,7 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Npgsql;
 
 namespace PP.Integrator.Logging
 {
@@ -15,7 +14,7 @@ namespace PP.Integrator.Logging
 		private readonly PostgreLoggerProviderOptions _options;
 		private readonly IPostgreLoggerRootFactory _rootFactory;
 		private readonly object _rootSync = new();
-		private PostgreLoggerBase? _rootLogger;
+		private PostgreLogger? _rootLogger;
 		private int _disposed;
 
 		public PostgreLogProvider(IPostgreLoggingDataSourceAccessor dataSourceAccessor, PostgreLoggerProviderOptions options, IPostgreLoggerRootFactory rootFactory)
@@ -57,7 +56,7 @@ namespace PP.Integrator.Logging
 #endif
 		}
 
-		private PostgreLoggerBase EnsureRootLogger()
+		private PostgreLogger EnsureRootLogger()
 		{
 			var existing = Volatile.Read(ref _rootLogger);
 			if (existing != null)
@@ -76,4 +75,3 @@ namespace PP.Integrator.Logging
 		}
 	}
 }
-

@@ -1,9 +1,10 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 #nullable disable
 namespace PP
 {
 	// пока оставлю их record'ами, возможно Deconstruct пригодится
-	
+
 	/// <summary>
 	/// Базовый класс для избежания boxin \ unboxing и смешанных колекций из классов и типов значений
 	/// </summary>

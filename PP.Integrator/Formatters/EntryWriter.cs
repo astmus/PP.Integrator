@@ -1,3 +1,4 @@
+using System;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using PP.Integrator.Logging;
@@ -6,7 +7,7 @@ namespace PP.Integrator.Formatters;
 
 internal abstract class EntryWriter : ILogEntryWriter
 {
-	protected static readonly JsonWriterOptions _jsonWriteroptions = new JsonWriterOptions() { Indented = false, SkipValidation = true };
+	protected static readonly JsonWriterOptions _jsonWriterOptions = new JsonWriterOptions() { Indented = false, SkipValidation = true };
 	protected const string OriginalFormatKey = "{OriginalFormat}";
 
 	public virtual void OnAfterEntryWrite() { }
@@ -21,46 +22,23 @@ internal abstract class EntryWriter : ILogEntryWriter
 		OnAfterEntryWrite();
 	}
 
-	private static object PrepareStatePayload(IReadOnlyList<KeyValuePair<string, object?>> structuredState, out string? originalFormat)
+	private static string TryGetFormat(object state)
 	{
-		originalFormat = null;
+		if (state is not IReadOnlyList<KeyValuePair<string, object?>> structuredState)
+			return null;
 
-		var originalFormatIndex = -1;
 		for (var i = 0; i < structuredState.Count; i++)
 		{
-			var item = structuredState[i];
-			if (!string.Equals(item.Key, OriginalFormatKey, StringComparison.OrdinalIgnoreCase))
-				continue;
-
-			originalFormatIndex = i;
-			originalFormat = item.Value?.ToString();
-			break;
+			if (string.Equals(structuredState[i].Key, OriginalFormatKey, StringComparison.OrdinalIgnoreCase))
+				return structuredState[i].Value.ToString();
 		}
 
-		if (originalFormatIndex < 0)
-			return structuredState;
-		if (structuredState.Count == 1)
-			return Array.Empty<KeyValuePair<string, object?>>();
-
-		var filteredState = new KeyValuePair<string, object?>[structuredState.Count - 1];
-		var writeIndex = 0;
-		for (var i = 0; i < structuredState.Count; i++)
-		{
-			if (i == originalFormatIndex)
-				continue;
-
-			filteredState[writeIndex++] = structuredState[i];
-		}
-
-		return filteredState;
+		return null;
 	}
 
 	protected void WriteInternal(string? message, in LogLevel logLevel, string context, in int eventId, Exception? exception, object? state, in DateTimeOffset stamp)
 	{
-		var originalFormat = default(string);
-		var statePayload = state;
-		if (state is IReadOnlyList<KeyValuePair<string, object?>> structuredState)
-			statePayload = PrepareStatePayload(structuredState, out originalFormat);
+		var originalFormat = TryGetFormat(state);		
 
 		WriteTimestamp(stamp);
 		WriteLogLevel(logLevel);
@@ -69,7 +47,7 @@ internal abstract class EntryWriter : ILogEntryWriter
 		WriteEventId(eventId);
 		WriteException(exception);
 		WriteFormat(originalFormat);
-		WriteState(statePayload);
+		WriteState(state);
 	}
 
 	protected abstract void WriteContext(string context);

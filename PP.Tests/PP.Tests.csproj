@@ -10,7 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.0.0">
@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\PP.Integrator\PP.Integrator.csproj" />
+    <ProjectReference Include="..\PP.Integrator.ChangeTracking\PP.Integrator.ChangeTracking.csproj" />
   </ItemGroup>
 
 </Project>

@@ -14,7 +14,7 @@ internal static class TableScopeResolver
 		{
 			var segment = scope switch
 			{
-				TableScope logScope => logScope.QualifiedTableName,
+				TableScope logScope => logScope.Partition.TableName,
 				string tableName => tableName,
 				null => null,
 				_ => scope.ToString()

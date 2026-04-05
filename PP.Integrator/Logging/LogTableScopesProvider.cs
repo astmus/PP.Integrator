@@ -1,12 +1,10 @@
-using System.Collections.Concurrent;
-using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 
 namespace PP.Integrator.Logging
 {
 	internal class LogTableScopesProvider : IExternalScopeProvider
 	{
-		private const string DefaultTable = "logs";
+		private const string DefaultSchema = "logs";
 		private const string DefaultLogTableName = "log";
 
 		private readonly AsyncLocal<TableScope?> _currentScope = new();
@@ -42,17 +40,17 @@ namespace PP.Integrator.Logging
 
 		private static readonly string[] Columns =
 		{
-				"timestamp",
-				"loglevel",
-				"category",
-				"message",
-				"eventid",
-				"exception",
-				"originalformat",
-				"state"
+			"timestamp",
+			"loglevel",
+			"category",
+			"message",
+			"eventid",
+			"exception",
+			"originalformat",
+			"state"
 		};
 
-		internal sealed class TableScope : IDisposable
+		internal class TableScope : IDisposable
 		{
 			private readonly LogTableScopesProvider _provider;
 			private bool _disposed;
@@ -71,19 +69,19 @@ namespace PP.Integrator.Logging
 				Parent = parent;
 				State = state;
 				Segments = BuildSegments(parent, state, isDefault);
-				QualifiedTableName = CreateQualifiedTableName(Segments);
-				CopyCommand = string.Intern($"COPY  {QualifiedTableName} ({string.Join(',', Columns)}) FROM STDIN (FORMAT BINARY)");
+
+				var tableName = CreateQualifiedTableName(Segments);
+				var copyCommand = string.Intern($"COPY  {tableName} ({string.Join(',', Columns)}) FROM STDIN (FORMAT BINARY)");
+				Partition = new TablePartition(tableName, copyCommand);							
 			}
+
+			public TablePartition Partition { get; }
 
 			public TableScope? Parent { get; }
 
 			public object? State { get; }
 
 			public string[] Segments { get; }
-
-			public string QualifiedTableName { get; }
-
-			public string CopyCommand { get; }
 
 			private static string[] BuildSegments(TableScope? parent, object? state, bool isDefault)
 			{
@@ -104,10 +102,10 @@ namespace PP.Integrator.Logging
 
 			private static string CreateQualifiedTableName(string[] segments) =>
 				segments.Length == 0
-					? $"{DefaultTable}.{DefaultLogTableName}"
-					: $"{DefaultTable}.{string.Join('_', segments)}";
+					? $"{DefaultSchema}.{DefaultLogTableName}"
+					: $"{DefaultSchema}.{string.Join('_', segments)}";
 
-			public override string ToString() => QualifiedTableName;
+			public override string ToString() => Partition.TableName;
 
 			public void Dispose()
 			{

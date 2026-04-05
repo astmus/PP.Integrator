@@ -6,7 +6,7 @@ namespace PP.Integrator.Logging;
 /// Данные одной записи лога.
 /// </summary>
 /// <typeparam name="TState">Тип состояния, переданного в логгер.</typeparam>
-public readonly struct LogEntry<TState>
+public readonly record struct LogEntry<TState>
 {
 	/// <summary>
 	/// Создает контейнер с данными одной записи журнала.

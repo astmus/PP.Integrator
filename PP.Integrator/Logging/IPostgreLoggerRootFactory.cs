@@ -1,7 +1,7 @@
-namespace PP.Integrator.Logging
+﻿namespace PP.Integrator.Logging
 {
 	internal interface IPostgreLoggerRootFactory
 	{
-		PostgreLoggerBase CreateRootLogger(IPostgreLoggingDataSourceAccessor dataSourceAccessor, PostgreLoggerProviderOptions options);
+		PostgreLogger CreateRootLogger(IPostgreLoggingDataSourceAccessor dataSourceAccessor, PostgreLoggerProviderOptions options);
 	}
 }

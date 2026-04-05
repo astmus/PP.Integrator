@@ -19,7 +19,7 @@ public class LoggingExampleSecond : BackgroundService
 		LogLevel level = LogLevel.Debug;
 		inta = 0;
 		var exc = new ArgumentNullException(nameof(stoppingToken));
-		await Task.CompletedTask;
+		await Task.Yield();
 		try
 		{
 			using var backgroundScope = statusLogger.BeginScope("status");

@@ -23,7 +23,7 @@ public class EntryWriterTests
 			null,
 			static (currentState, _) => $"User {currentState[0].Value}");
 
-		writer.Write(entry, TextWriter.Null, "logs.test_log");
+		writer.Write(entry, "logs.test_log");
 
 		Assert.Equal("User {UserId}", writer.WrittenFormat);
 		var writtenState = Assert.IsType<KeyValuePair<string, object?>[]>(writer.WrittenState);
@@ -48,7 +48,7 @@ public class EntryWriterTests
 			null,
 			static (currentState, _) => $"User {currentState[0].Value}");
 
-		writer.Write(entry, TextWriter.Null, "logs.test_log");
+		writer.Write(entry, "logs.test_log");
 
 		Assert.Null(writer.WrittenFormat);
 		Assert.Same(state, writer.WrittenState);

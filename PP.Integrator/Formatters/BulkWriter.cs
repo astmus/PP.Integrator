@@ -9,7 +9,7 @@ namespace PP.Integrator.Formatters;
 internal sealed class BulkWriter : EntryWriter
 {
 	private const int ExceptionMaxDepth = 4;
-	private const int JsonBufferSize = 256;
+	private const int JsonBufferSize = 512;
 
 	private static readonly JsonSerializerOptions _serializeOptions = new()
 	{
@@ -55,10 +55,12 @@ internal sealed class BulkWriter : EntryWriter
 		}
 	}
 
+	ArrayBufferWriter<byte> output = new ArrayBufferWriter<byte>(JsonBufferSize);
 	private void WriteStructuredState(IReadOnlyList<KeyValuePair<string, object?>> structuredState)
 	{
-		var output = new ArrayBufferWriter<byte>(JsonBufferSize);
-		using var jsonWriter = new Utf8JsonWriter(output, _jsonWriteroptions);
+		//var output = new ArrayBufferWriter<byte>(JsonBufferSize);
+		output.Clear();
+		using var jsonWriter = new Utf8JsonWriter(output, _jsonWriterOptions);
 
 		jsonWriter.WriteStartObject();
 
@@ -79,14 +81,13 @@ internal sealed class BulkWriter : EntryWriter
 #else 
 		_importer.Write(output.WrittenMemory.ToArray(), NpgsqlDbType.Jsonb);
 #endif
-	}
-
-	
+	}	
 
 	private void WriteExceptionJson(Exception exception)
 	{
 		//ArrayPool<byte>.Shared.Rent(JsonBufferSize);
-		var output = new ArrayBufferWriter<byte>(JsonBufferSize);
+		//var output = new ArrayBufferWriter<byte>(JsonBufferSize);
+		output.Clear();
 		using var jsonWriter = new Utf8JsonWriter(output);
 		WriteExceptionObject(jsonWriter, exception, 0);
 		jsonWriter.Flush();

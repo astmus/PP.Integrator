@@ -9,11 +9,11 @@ using PP.Shared.Extensions;
 namespace PP.Integrator;
 
 /// <summary>
-/// Класс-расширение для регистрации логгера
+/// Класс-расширение для регистрации Postgre-логгера.
 /// </summary>
 public static class IntegratorLoggerExtensions
 {
-	private const string STORED_PROCEDURE_COMPAT_MODE_SWITCH = "Npgsql.EnableStoredProcedureCompatMode";
+	private const string StoredProcedureCompatModeSwitch = "Npgsql.EnableStoredProcedureCompatMode";
 
 	/// <summary>
 	/// Регистрирует источник данных Postgre, используемый только инфраструктурой логирования.
@@ -39,7 +39,7 @@ public static class IntegratorLoggerExtensions
 
 	/// <summary>
 	/// Регистрирует источник данных Postgre, используемый только инфраструктурой логирования.
-	/// Позволяет настроить <see cref="NpgsqlDataSourceBuilder" /> напрямую.
+	/// Позволяет настроить <see cref="NpgsqlDataSourceBuilder"/> напрямую.
 	/// </summary>
 	public static IServiceCollection AddPostgreLoggingDataSource(this IServiceCollection services, string connectionString, Action<NpgsqlDataSourceBuilder>? configure = null)
 	{
@@ -61,7 +61,7 @@ public static class IntegratorLoggerExtensions
 
 	/// <summary>
 	/// Добавляет Postgre-провайдер логирования.
-	/// Требует зарегистрированный <see cref="IPostgreLoggingDataSourceAccessor" />.
+	/// Требует зарегистрированный <see cref="IPostgreLoggingDataSourceAccessor"/>.
 	/// </summary>
 	public static ILoggingBuilder AddPostgreLogger(this ILoggingBuilder builder, bool backCompatibility = false)
 	{
@@ -88,7 +88,7 @@ public static class IntegratorLoggerExtensions
 
 	/// <summary>
 	/// Регистрирует источник данных Postgre и добавляет Postgre-провайдер логирования.
-	/// Позволяет настроить <see cref="NpgsqlDataSourceBuilder" /> напрямую.
+	/// Позволяет настроить <see cref="NpgsqlDataSourceBuilder"/> напрямую.
 	/// </summary>
 	public static ILoggingBuilder AddPostgreLogger(this ILoggingBuilder builder, string connectionString, Action<NpgsqlDataSourceBuilder>? configure = null, bool backCompatibility = false)
 	{
@@ -112,42 +112,18 @@ public static class IntegratorLoggerExtensions
 		return builder;
 	}
 
-	/// <summary>
-	/// Использует классическую реализацию логгера.
-	/// </summary>
-	public static ILoggingBuilder UseClassic(this ILoggingBuilder builder)
-	{
-		GuardEx.ThrowIfNull(builder, nameof(builder));
-
-		builder.Services.RemoveAll<IPostgreLoggerRootFactory>();
-		builder.Services.AddSingleton<IPostgreLoggerRootFactory, PostgreClassicLoggerRootFactory>();
-		return builder;
-	}
-
-	/// <summary>
-	/// Использует реализацию логгера с auto-wait.
-	/// </summary>
-	public static ILoggingBuilder UseAutoWait(this ILoggingBuilder builder)
-	{
-		GuardEx.ThrowIfNull(builder, nameof(builder));
-
-		builder.Services.RemoveAll<IPostgreLoggerRootFactory>();
-		builder.Services.AddSingleton<IPostgreLoggerRootFactory, PostgreAutoWaitLoggerRootFactory>();
-		return builder;
-	}
-
 	private static void ApplyBackCompatibility(bool backCompatibility)
 	{
 		if (!backCompatibility)
 			return;
 
-		AppContext.SetSwitch(STORED_PROCEDURE_COMPAT_MODE_SWITCH, true);
+		AppContext.SetSwitch(StoredProcedureCompatModeSwitch, true);
 	}
 
 	private static void AddPostgreLoggerCore(ILoggingBuilder builder)
 	{
 		builder.AddConfiguration();
-		builder.Services.TryAddSingleton<IPostgreLoggerRootFactory, PostgreClassicLoggerRootFactory>();
+		builder.Services.TryAddSingleton<IPostgreLoggerRootFactory, PostgreLoggerRootFactory>();
 		builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider, PostgreLogProvider>());
 		LoggerProviderOptions.RegisterProviderOptions<PostgreLoggerProviderOptions, PostgreLogProvider>(builder.Services);
 	}

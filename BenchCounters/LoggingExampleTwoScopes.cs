@@ -17,7 +17,7 @@ public class LoggingExampleTwoScopes : BackgroundService
 		Inta = 0;
 		var exc = new ArgumentNullException(nameof(stoppingToken));
 
-		await Task.CompletedTask;
+		await Task.Yield();
 
 		try
 		{
@@ -26,7 +26,7 @@ public class LoggingExampleTwoScopes : BackgroundService
 
 			while (DateTime.UtcNow < finishAt && !stoppingToken.IsCancellationRequested)
 			{
-				level = (LogLevel)(Inta++ % 6);
+				level = (LogLevel)(Inta++ % 5);
 				logger.Log(level, exc, "Two scopes message {Iteration}", Inta);
 			}
 		}

@@ -1,69 +1,78 @@
-using Microsoft.Extensions.Logging;
-using Npgsql;
+﻿using Npgsql;
 using PP.Integrator.Logging;
 
 namespace PP.Tests;
 
-public class PostgreLoggerBaseTests
+public class PostgreLoggerTests
 {
 	[Fact]
-	public async Task ExecuteWithRetryAsync_MustRetryTransientError_AndEventuallySucceed()
+	public void WriteEntry_MustInitializeOnce_AndEnqueueEntries()
 	{
-		var logger = new RetrySpyLogger();
-		var attempts = 0;
+		using var logger = new SpyLogger();
+		var entry1 = CreateEntry("first");
+		var entry2 = CreateEntry("second");
 
-		await logger.ExecuteWithRetryAsync(() =>
-		{
-			attempts++;
-			if (attempts < 3)
-				throw new TimeoutException("transient");
+		logger.WriteEntry(entry1);
+		logger.WriteEntry(entry2);
 
-			return Task.CompletedTask;
-		});
-
-		Assert.Equal(3, attempts);
+		Assert.Equal(1, logger.InitializeCalls);
+		Assert.Equal(2, logger.EnqueueCalls);
 	}
 
 	[Fact]
-	public async Task ExecuteWithRetryAsync_MustNotRetryNonTransientError()
+	public void WriteEntry_AfterDispose_MustNotEnqueue()
 	{
-		var logger = new RetrySpyLogger();
-		var attempts = 0;
+		var logger = new SpyLogger();
+		logger.Dispose();
 
-		await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			logger.ExecuteWithRetryAsync(() =>
-			{
-				attempts++;
-				throw new InvalidOperationException("fatal");
-			}));
+		logger.WriteEntry(CreateEntry("ignored"));
 
-		Assert.Equal(1, attempts);
+		Assert.Equal(0, logger.EnqueueCalls);
+		Assert.Equal(1, logger.DisposeCalls);
 	}
 
-	private sealed class RetrySpyLogger : PostgreLoggerBase
-	{
-		public RetrySpyLogger()
-			: base(
+	private static LogRecord<string> CreateEntry(string state) =>
+		new(
+			new LogEntry<string>(
+				Microsoft.Extensions.Logging.LogLevel.Information,
 				"Tests.Retry",
-				NpgsqlDataSource.Create(new NpgsqlConnectionStringBuilder { Host = "localhost", Database = "test" }),
-				new PostgreLoggerProviderOptions { WriteRetryCount = 3 },
-				LogLevel.Trace)
+				new Microsoft.Extensions.Logging.EventId(1, "evt"),
+				state,
+				null,
+				static (s, _) => s),
+			"logs.test_log");
+
+	private sealed class SpyLogger : PostgreLogger
+	{
+		public SpyLogger()
+			: base(new TestDataSourceAccessor(), new PostgreLoggerProviderOptions())
 		{
 		}
 
-		public Task ExecuteWithRetryAsync(Func<Task> operation) =>
-			base.ExecuteWithRetryAsync(nameof(RetrySpyLogger), "logs.test_log", operation);
+		public int InitializeCalls { get; private set; }
+		public int EnqueueCalls { get; private set; }
+		public int DisposeCalls { get; private set; }
 
-		protected override void InitializeCore()
+		protected override void Initialize()
 		{
+			InitializeCalls++;
 		}
 
 		protected override void EnqueueEntry(LogRecord entry)
 		{
+			EnqueueCalls++;
 		}
 
-		public override void Flush()
+		protected override void Dispose(bool disposing)
 		{
+			base.Dispose(disposing);
+			DisposeCalls++;
 		}
+	}
+
+	private sealed class TestDataSourceAccessor : IPostgreLoggingDataSourceAccessor
+	{
+		public NpgsqlDataSource DataSource { get; } =
+			NpgsqlDataSource.Create(new NpgsqlConnectionStringBuilder { Host = "localhost", Database = "test" }.ConnectionString);
 	}
 }

@@ -5,9 +5,9 @@ namespace PP.Integrator.Logging
 	internal sealed class PostgreDelegatedLogger : ILogger
 	{
 		private readonly string _contextName;
-		private readonly PostgreLoggerBase _parentLogger;
+		private readonly PostgreLogger _parentLogger;
 
-		public PostgreDelegatedLogger(string contextName, PostgreLoggerBase parentLogger)
+		public PostgreDelegatedLogger(string contextName, PostgreLogger parentLogger)
 		{
 			_contextName = contextName;
 			_parentLogger = parentLogger;
@@ -18,8 +18,7 @@ namespace PP.Integrator.Logging
 			if (!IsEnabled(logLevel))
 				return;
 
-			var entry = new LogRecord<TState>(
-				new LogEntry<TState>(logLevel, _contextName, eventId, state, exception, formatter),
+			var entry = new LogRecord<TState>(new LogEntry<TState>(logLevel, _contextName, eventId, state, exception, formatter),
 				_parentLogger.ScopeProvider.CurrentScope);
 
 			_parentLogger.WriteEntry(entry);

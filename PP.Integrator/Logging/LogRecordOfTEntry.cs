@@ -1,4 +1,5 @@
 using PP.Integrator.Formatters;
+using static PP.Integrator.Logging.LogTableScopesProvider;
 
 namespace PP.Integrator.Logging;
 
@@ -8,7 +9,7 @@ namespace PP.Integrator.Logging;
 /// <typeparam name="TEntry">Тип полезной нагрузки записи.</typeparam>
 /// <param name="Entry">Данные лог-события.</param>
 /// <param name="Scope">Контекст (scope) логирования.</param>
-public record LogRecord<TEntry>(LogEntry<TEntry> Entry, object Scope) : LogRecord(Scope)
+internal record LogRecord<TEntry>(LogEntry<TEntry> Entry, TableScope Scope) : LogRecord(Scope)
 {
 	/// <summary>
 	/// Записывает запись лога через указанный writer.

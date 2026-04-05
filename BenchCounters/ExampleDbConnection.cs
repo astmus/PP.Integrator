@@ -21,6 +21,6 @@ internal static class ExampleDbConnection
 		builder.WriteBufferSize = 65536;
 		builder.Pooling = true;
 		builder.MinPoolSize = 2;
-		builder.MaxPoolSize = 16;
+		builder.MaxPoolSize = 32;
 	}
 }

@@ -7,10 +7,13 @@ namespace BenchCounters;
 
 public class LoggingExample : BackgroundService
 {	
-	private ILogger<LoggingExample> logger;	
-	public LoggingExample(ILogger<LoggingExample> log)
+	private ILogger<LoggingExample> logger;
+	private readonly IHostApplicationLifetime _appLifetime;
+
+	public LoggingExample(ILogger<LoggingExample> log, IHostApplicationLifetime appLifetime)
 	{		
-		this.logger = log;		
+		this.logger = log;
+		_appLifetime = appLifetime;
 	}
 
 	Rootobject[] objs;
@@ -28,11 +31,12 @@ public class LoggingExample : BackgroundService
 		inta = 0;
 		try
 		{
+			await Task.Yield();
 			using var background = logger.BeginScope("background");
 
 			while (!stoppingToken.IsCancellationRequested)
 			{
-				var current = objs[Convert.ToInt32(inta++ % 10)];
+				var current = objs[Convert.ToInt32(inta % 10)];
 				level = (LogLevel)(loglevel++ % 6);
 
 				var logEntry = new WebSocketLogItem
@@ -48,7 +52,9 @@ public class LoggingExample : BackgroundService
 					Email = current.email
 				};
 
-				logger.Log(level,"message {int} {entry} {error}", inta, logEntry, level >= LogLevel.Error ? exc : default);
+				logger.Log(LogLevel.Information, (EventId)(++inta), level >= LogLevel.Error ? exc : default, "message {int} {entry} ", inta, logEntry);
+				//await Task.Delay(1000);
+				//if (inta == 4) break;
 				//logger.LogError(inta, "Error message");
 				//_logger.LogInformation(inta, "Owner {Phone} Soket item {Item}", current.phone, logEntry);
 				if (span < DateTime.Now.TimeOfDay) break;
@@ -62,6 +68,7 @@ public class LoggingExample : BackgroundService
 		sw.Stop();
 		Console.WriteLine(nameof(LoggingExampleSecond)+" Logging completed "+sw.Elapsed);
 		Console.WriteLine(inta);
+		_appLifetime.StopApplication();
 	}
 
 	public class Rootobject
