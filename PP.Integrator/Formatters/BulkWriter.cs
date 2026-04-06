@@ -81,12 +81,31 @@ internal sealed class BulkWriter : EntryWriter
 #else 
 		_importer.Write(output.WrittenMemory.ToArray(), NpgsqlDbType.Jsonb);
 #endif
-	}	
+	}
+
+	internal static void WriteStructuredStateInternal(IReadOnlyList<KeyValuePair<string, object?>> structuredState, ArrayBufferWriter<byte> buffer)
+	{
+		//var output = new ArrayBufferWriter<byte>(JsonBufferSize);
+		buffer.Clear();
+		using var jsonWriter = new Utf8JsonWriter(buffer, _jsonWriterOptions);
+
+		jsonWriter.WriteStartObject();
+
+		for (var i = 0; i < structuredState.Count; i++)
+		{
+			var item = structuredState[i];
+			if (string.Equals(item.Key, OriginalFormatKey, StringComparison.Ordinal))
+				continue;
+
+			WriteJsonProperty(jsonWriter, item.Key, item.Value);
+		}
+
+		jsonWriter.WriteEndObject();
+		jsonWriter.Flush();
+	}
 
 	private void WriteExceptionJson(Exception exception)
-	{
-		//ArrayPool<byte>.Shared.Rent(JsonBufferSize);
-		//var output = new ArrayBufferWriter<byte>(JsonBufferSize);
+	{		
 		output.Clear();
 		using var jsonWriter = new Utf8JsonWriter(output);
 		WriteExceptionObject(jsonWriter, exception, 0);
@@ -96,6 +115,14 @@ internal sealed class BulkWriter : EntryWriter
 #else
 		_importer.Write(output.WrittenSpan.ToArray(), NpgsqlDbType.Jsonb);
 #endif
+	}
+
+	internal static void WriteExceptionJsonInternal(Exception exception, ArrayBufferWriter<byte> buffer)
+	{		
+		buffer.Clear();
+		using var jsonWriter = new Utf8JsonWriter(buffer);
+		WriteExceptionObject(jsonWriter, exception, 0);
+		jsonWriter.Flush();
 	}
 
 	private static void WriteExceptionObject(Utf8JsonWriter jsonWriter, Exception exception, int depth)
@@ -205,4 +232,6 @@ internal sealed class BulkWriter : EntryWriter
 
 	protected override void WriteTimestamp(in DateTimeOffset timestamp)
 		=> _importer.Write(timestamp, NpgsqlDbType.TimestampTz);
+	protected override void WriteRawBytes(in byte[] bytes) 
+		=> _importer.Write(bytes, NpgsqlDbType.Jsonb);
 }

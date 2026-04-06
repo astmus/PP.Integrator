@@ -12,6 +12,24 @@ namespace PP
 		private readonly int _timeout;
 
 		/// <summary>
+		/// Представляет собой дефолтный дедлайн с фиксированным таймаутом в 100 мсек.
+		/// </summary>
+		public static readonly Deadline Default;
+
+		Deadline(ushort timeout = 100)
+		{
+			_started = long.MinValue;
+			_timeout = timeout;
+		}
+
+		public override string ToString() => TimeSpan.FromMilliseconds(_timeout).ToString();
+
+		/// <summary>
+		/// Количество миллисекунд дедлайна.
+		/// </summary>
+		public int Timeout => _timeout;
+
+		/// <summary>
 		/// Неявное преобразование дедлайна в количество миллисекунд оставшихся до его истечения
 		/// </summary>
 		/// <param name="d">Экземпляр дедлайна.</param>
@@ -31,9 +49,18 @@ namespace PP
 		/// Создает новый дедлайн на основе имеющегося
 		/// </summary>
 		/// <param name="deadline">Экземпляр дедлайна.</param>
-		public static Deadline New(Deadline deadline)
+		public static Deadline BasedOn(Deadline deadline)
 		{
 			return new Deadline(deadline._timeout);		
+		}
+
+		/// <summary>
+		/// Создает новый дедлайн на основе количества секунд
+		/// </summary>
+		/// <param name="seconds">Количество секундд.</param>
+		public static Deadline FromSeconds(ushort seconds)
+		{
+			return new Deadline(seconds*1000);
 		}
 
 		/// <summary>

@@ -34,10 +34,10 @@ public class LoggingExample : BackgroundService
 			await Task.Yield();
 			using var background = logger.BeginScope("background");
 
-			while (!stoppingToken.IsCancellationRequested)
+			while (!stoppingToken.IsCancellationRequested && sw.ElapsedMilliseconds < 60000)
 			{
 				var current = objs[Convert.ToInt32(inta % 10)];
-				level = (LogLevel)(loglevel++ % 6);
+				level = (LogLevel)(loglevel++ % 5);
 
 				var logEntry = new WebSocketLogItem
 				{
@@ -57,7 +57,6 @@ public class LoggingExample : BackgroundService
 				//if (inta == 4) break;
 				//logger.LogError(inta, "Error message");
 				//_logger.LogInformation(inta, "Owner {Phone} Soket item {Item}", current.phone, logEntry);
-				if (span < DateTime.Now.TimeOfDay) break;
 			}
 			await Task.CompletedTask;
 		}
@@ -66,8 +65,7 @@ public class LoggingExample : BackgroundService
 			logger.LogError(error, "log error");
 		}
 		sw.Stop();
-		Console.WriteLine(nameof(LoggingExampleSecond)+" Logging completed "+sw.Elapsed);
-		Console.WriteLine(inta);
+		Console.WriteLine(nameof(LoggingExample)+" completed "+inta);
 		_appLifetime.StopApplication();
 	}
 

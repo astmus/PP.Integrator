@@ -5,7 +5,6 @@ namespace PP.Integrator.Logging;
 
 internal class TablePartition : ConcurrentQueue<LogRecord>
 {
-	public NpgsqlConnection? Connection { get; set; }
 	public string TableName { get; } = string.Empty;
 	public string CopyCommand { get; } = string.Empty;
 
@@ -13,5 +12,21 @@ internal class TablePartition : ConcurrentQueue<LogRecord>
 	{
 		TableName = tableName;
 		CopyCommand = copyCommand;
+	}
+
+	private int _isProcessing;
+	public bool IsProcessing => Volatile.Read(ref _isProcessing) == 1;
+
+	public TablePartition NewPartition
+		=> new TablePartition(TableName, CopyCommand);
+
+	public bool TryBeginProcessing()
+	{
+		return Interlocked.CompareExchange(ref _isProcessing, 1, 0) == 0;
+	}
+
+	public void EndProcessing()
+	{
+		Volatile.Write(ref _isProcessing, 0);
 	}
 }

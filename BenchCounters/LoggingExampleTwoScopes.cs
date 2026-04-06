@@ -35,5 +35,6 @@ public class LoggingExampleTwoScopes : BackgroundService
 			logger.LogError(err, "Ошибка в LoggingExampleTwoScopes");
 		}
 
+		Console.WriteLine(nameof(LoggingExampleTwoScopes) + " completed " + Inta);
 	}
 }

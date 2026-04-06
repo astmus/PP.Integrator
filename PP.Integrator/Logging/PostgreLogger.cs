@@ -1,18 +1,10 @@
-using System.Collections;
+using System.Buffers;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Diagnostics;
-using System.Linq;
-using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
-using System.Threading.Channels;
-using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using PP.Integrator.Formatters;
-using static PP.Integrator.Logging.LogTableScopesProvider;
 
 namespace PP.Integrator.Logging;
 
@@ -45,7 +37,7 @@ internal class PostgreLogger : IDisposable
 	//private Thread _consumerThread = default!;
 	//private readonly CancellationTokenSource _shutdown = new();
 
-	
+
 
 	//private const int ShutdownJoinTimeoutMs = 3000;
 	protected readonly NpgsqlDataSource DataSource;
@@ -67,16 +59,17 @@ internal class PostgreLogger : IDisposable
 	private TransformManyBlock<LogRecord[], TablePartition> _groupBlock;
 	private ActionBlock<TablePartition> _writerBlock = default!;
 	private Thread _consumerThread = null!;
-	private readonly CancellationTokenSource _shutdown = new();	
-
-	private const int ShutdownJoinTimeoutMs = 3000;
+	private readonly CancellationTokenSource _shutdown = new();
+	private readonly BufferBackpressure _pressureGate;
+	private const int ShutdownJoinTimeoutMs = 5000;
 
 	public PostgreLogger(IPostgreLoggingDataSourceAccessor dataSourceAccessor, PostgreLoggerProviderOptions options)
 	{
 		DataSource = dataSourceAccessor.DataSource;
 		Options = options;
 		ScopeProvider = new LogTableScopesProvider(withDefaultScope: true);
-		_ensureInitializedDelegate = EnsureInitialized;
+		_pressureGate = new BufferBackpressure((uint)Options.MaxBufferItemsCount);
+		EnsureInitialized();
 	}
 
 	protected int MaxBufferItemsCount => Options.MaxBufferItemsCount;
@@ -115,9 +108,11 @@ internal class PostgreLogger : IDisposable
 		var propagateOptions = new DataflowLinkOptions { PropagateCompletion = true };
 		var maxParallelism = Math.Max(1, Environment.ProcessorCount - 1);
 
-		_buffer = new BlockingCollection<LogRecord>(Options.MaxBufferItemsCount);
+		_buffer = new BlockingCollection<LogRecord>(MaxBufferItemsCount);
 
-		_batchBlock = new BatchBlock<LogRecord>(Options.MaxBufferItemsCount, new GroupingDataflowBlockOptions
+		var batchSize = Convert.ToInt32(MaxBufferItemsCount * 0.75);
+
+		_batchBlock = new BatchBlock<LogRecord>(batchSize, new GroupingDataflowBlockOptions
 		{
 			BoundedCapacity = MaxBufferItemsCount,
 			CancellationToken = _shutdown.Token
@@ -125,6 +120,8 @@ internal class PostgreLogger : IDisposable
 
 		_groupBlock = new TransformManyBlock<LogRecord[], TablePartition>(GroupByTableName, new ExecutionDataflowBlockOptions
 		{
+			MaxDegreeOfParallelism = maxParallelism,
+			BoundedCapacity = maxParallelism,
 			CancellationToken = _shutdown.Token
 		});
 
@@ -138,7 +135,7 @@ internal class PostgreLogger : IDisposable
 
 
 		_batchBlock.LinkTo(_groupBlock, new DataflowLinkOptions { PropagateCompletion = true });
-		_groupBlock.LinkTo(_writerBlock, new DataflowLinkOptions { PropagateCompletion = true });		
+		_groupBlock.LinkTo(_writerBlock, new DataflowLinkOptions { PropagateCompletion = true });
 
 		_consumerThread = new Thread(ProcessQueue)
 		{
@@ -172,7 +169,7 @@ internal class PostgreLogger : IDisposable
 	protected virtual bool IsTransientWriteError(Exception exception) =>
 		exception is NpgsqlException or TimeoutException or IOException;
 
-	protected async ValueTask EnsureTableExistsAsync(TablePartition partition, CancellationToken cancellationToken)
+	protected async ValueTask EnsureTableExistsAsync(TablePartition partition, NpgsqlConnection connection, CancellationToken cancellationToken)
 	{
 		if (EnsuredTables.ContainsKey(partition.TableName))
 			return;
@@ -188,7 +185,6 @@ internal class PostgreLogger : IDisposable
 			var qualifiedTableName = partition.TableName;
 			var indexName = qualifiedTableName.Replace('.', '_') + "_timestamp_brin_idx";
 
-			await using var connection = await DataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
 			await using var command = connection.CreateCommand();
 
 			command.CommandText =
@@ -216,54 +212,74 @@ internal class PostgreLogger : IDisposable
 
 	private IEnumerable<TablePartition> GroupByTableName(LogRecord[] batch)
 	{
-		var tables =
-		(from x in batch
-		 group x by x.Scope.Partition.TableName into g
-		 select g.First().Scope.Partition)
-		.ToArray();
+		Dictionary<string, TablePartition> tables = new Dictionary<string, TablePartition>(StringComparer.OrdinalIgnoreCase);
 
-		return tables;
+		foreach (var row in batch)
+		{
+			TablePartition partition;
+
+			if (!tables.TryGetValue(row.Scope.Partition.TableName, out partition))
+			{
+				partition = row.Scope.Partition.IsProcessing ? row.Scope.Partition.NewPartition : row.Scope.Partition;
+				tables.Add(partition.TableName, partition);
+			}
+
+			partition.Enqueue(row);
+			_pressureGate.Increment();
+		}
+
+		return tables.Values;
 	}
 
 	async Task PartitionEnsuredWrite(TablePartition partition)
 	{
-		return;
-		await EnsureTableExistsAsync(partition, _shutdown.Token).ConfigureAwait(false);
-		await WritePartitionWithRetry(partition).ConfigureAwait(false);
+		await using var connection = await DataSource.OpenConnectionAsync(_shutdown.Token).ConfigureAwait(false);
+		await EnsureTableExistsAsync(partition, connection, _shutdown.Token).ConfigureAwait(false);
+		await WritePartitionWithRetry(partition, connection).ConfigureAwait(false);
 	}
 
 	private void ProcessQueue()
-	{		
+	{
 		try
-		{			
+		{
+			var additionalAttempt = 0;
 			while (!_shutdown.IsCancellationRequested && !_buffer.IsCompleted)
 			{
-				var item = _buffer.Take(_shutdown.Token);				
+				var item = _buffer.Take(_shutdown.Token);
 				var timeout = new Deadline(AutoFlushDuration);
 
 				do
-				{					
-					EnqueueToPartition(item);
-					var added = _batchBlock.Post(item);
-					var attempt = WriteRetryCount;
-					var writeTimeout = new Deadline(128);
+				{
+					if (_buffer.Count < MaxBufferItemsCount * 0.75)
+						PreparseItem(item);
 
-					while (!added && attempt > 0)
+					var added = _batchBlock.Post(item);
+					var attempt = 0;
+
+					if (!added)
 					{
-						added = _batchBlock.SendAsync(item, _shutdown.Token).Wait(writeTimeout, _shutdown.Token);
-						attempt--;
+						var writeTimeout = Deadline.FromSeconds(1);
+
+						while (!added && attempt <= WriteRetryCount + additionalAttempt)
+						{
+							added = _batchBlock.SendAsync(item, _shutdown.Token).Wait(writeTimeout, _shutdown.Token);
+							writeTimeout = writeTimeout.Linear(attempt++);
+							//Console.WriteLine($"Пфтаемся добавить. Размер буффера вх:{_buffer.Count} вых:{_pressureGate.BufferCount}");
+						}
 					}
 
 					if (timeout.IsExpired)
 					{
-						_batchBlock.TriggerBatch();
-						break;
+						if (_pressureGate.GetPressurePercents() < 90)
+							_batchBlock.TriggerBatch();
+
+						timeout = Deadline.BasedOn(timeout);
 					}
 
 					if (added)
-						timeout = Deadline.New(timeout);
+						timeout = Deadline.BasedOn(timeout);
 					else
-						ReportLoggingError(new TimeoutException($"Не удалось записать элемент {item}"));
+						ReportLoggingError(new TimeoutException($"Не удалось записать элемент {item} размер буффера вх:{_buffer.Count} вых:{_pressureGate.BufferCount}"));
 				}
 				while (_buffer.TryTake(out item, timeout, _shutdown.Token) && !_buffer.IsCompleted);
 			}
@@ -276,7 +292,7 @@ internal class PostgreLogger : IDisposable
 
 			if (_writerBlock.Completion.IsFaulted && _writerBlock.Completion.Exception != null)
 				ReportLoggingError(_writerBlock.Completion.Exception);
-		}		
+		}
 		catch (InvalidOperationException)
 		{
 		}
@@ -289,26 +305,41 @@ internal class PostgreLogger : IDisposable
 		}
 	}
 
-	private void EnqueueToPartition(LogRecord item)
+	ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(2048);
+	private void PreparseItem(LogRecord item)
 	{
-		
-		if (_buffer.Count < _buffer.Count * 0.75)
+		if (item.GetException() is Exception error)
 		{
-			
+			BulkWriter.WriteExceptionJsonInternal(error, buffer);
+#if NET8_0_OR_GREATER
+			item.ErrorBytes = buffer.WrittenSpan.ToArray();
+#else
+			item.ErrorBytes = buffer.WrittenSpan.ToArray();
+#endif
 		}
-		else
-			item.Scope.Partition.Enqueue(item);
+
+		if (item.GetState() is IReadOnlyList<KeyValuePair<string, object?>> state)
+		{
+			BulkWriter.WriteStructuredStateInternal(state, buffer);
+#if NET8_0_OR_GREATER
+			item.StateBytes = buffer.WrittenSpan.ToArray();
+#else
+			item.ErrorBytes = buffer.WrittenSpan.ToArray();
+#endif
+		}
 	}
 
-	private async Task WritePartition(TablePartition tablePartition)
+	private async Task WritePartition(TablePartition partition, NpgsqlConnection connection)
 	{
-		await using var connection = await DataSource.OpenConnectionAsync(_shutdown.Token);
-		await using var importer = await connection.BeginBinaryImportAsync(tablePartition.CopyCommand, _shutdown.Token);
+		await using var importer = await connection.BeginBinaryImportAsync(partition.CopyCommand, _shutdown.Token);
 
 		var writer = new BulkWriter(importer);
 
-		while (tablePartition.TryDequeue(out var item))
+		while (partition.TryDequeue(out var item))
+		{
 			item.Write(writer);
+			_pressureGate.Decrement();
+		}
 
 		var written = await importer.CompleteAsync(_shutdown.Token);
 
@@ -317,10 +348,11 @@ internal class PostgreLogger : IDisposable
 #endif
 	}
 
-	private async Task WritePartitionWithRetry(TablePartition tablePartition)
+	private async Task WritePartitionWithRetry(TablePartition partition, NpgsqlConnection connection)
 	{
 		try
 		{
+			partition.TryBeginProcessing();
 			Exception? lastError = null;
 			var attempt = 0;
 
@@ -328,14 +360,14 @@ internal class PostgreLogger : IDisposable
 			{
 				try
 				{
-					await WritePartition(tablePartition);
+					await WritePartition(partition, connection);
 					lastError = null;
 				}
 				catch (Exception ex) when (IsTransientWriteError(ex) && attempt < WriteRetryCount)
 				{
 					lastError = ex;
 					ReportLoggingError(ex, $"attempt={attempt + 1}/{WriteRetryCount}");
-					await Task.Delay(++attempt * 100, _shutdown.Token);
+					await Task.Delay(Deadline.Default.Linear(++attempt, 2), _shutdown.Token);
 				}
 			}
 			while (!_shutdown.IsCancellationRequested && lastError != null && attempt <= WriteRetryCount);
@@ -349,6 +381,10 @@ internal class PostgreLogger : IDisposable
 		catch (Exception error)
 		{
 			ReportLoggingError(error);
+		}
+		finally
+		{
+			partition.EndProcessing();
 		}
 	}
 
@@ -373,10 +409,6 @@ internal class PostgreLogger : IDisposable
 			_shutdown.Cancel();
 			ReportLoggingError(new TimeoutException($"Не удалось завершить {nameof(PostgreLogger)} за {ShutdownJoinTimeoutMs} мс."));
 		}
-
-#if DEBUG
-		Console.WriteLine($"writed :{_written}");
-#endif
 	}
 
 	protected void ReportLoggingError(Exception error, string message = default!, [CallerMemberName] string loggerName = default!)
@@ -404,10 +436,12 @@ internal class PostgreLogger : IDisposable
 
 		try
 		{
-			if (!_buffer.IsAddingCompleted)
-				_buffer.CompleteAdding();
+			_buffer.CompleteAdding();
 
 			Flush();
+#if DEBUG
+			Console.WriteLine($"writed :{_written} buffer:{_pressureGate.BufferCount} items");
+#endif
 		}
 		catch (Exception ex)
 		{

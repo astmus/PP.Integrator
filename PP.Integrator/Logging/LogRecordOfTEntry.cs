@@ -11,9 +11,12 @@ namespace PP.Integrator.Logging;
 /// <param name="Scope">Контекст (scope) логирования.</param>
 internal record LogRecord<TEntry>(LogEntry<TEntry> Entry, TableScope Scope) : LogRecord(Scope)
 {
+	public override Exception? GetException() => Entry.Exception;
+	public override object GetState() => Entry.State;
+
 	/// <summary>
 	/// Записывает запись лога через указанный writer.
 	/// </summary>
 	/// <param name="entryWriter">Компонент, выполняющий запись.</param>
-	public override void Write(ILogEntryWriter entryWriter) => entryWriter.Write(Entry, Scope);
+	public override void Write(ILogEntryWriter entryWriter) => entryWriter.Write(this, Scope);
 }

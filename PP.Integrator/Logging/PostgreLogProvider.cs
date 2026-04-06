@@ -50,10 +50,6 @@ namespace PP.Integrator.Logging
 
 			_rootLogger?.Dispose();
 			_loggers.Clear();
-
-#if DEBUG
-			Console.WriteLine("Logger disposed");
-#endif
 		}
 
 		private PostgreLogger EnsureRootLogger()

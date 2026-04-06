@@ -62,6 +62,8 @@ public class Program
 			.AddHostedService<LoggingExample>();
 		var host = builder.Build();
 		host.Run();
+		Console.WriteLine("All completed press any key");
+		Console.ReadKey(true);
 	}
 
 	private static void StartDotNetCounters()

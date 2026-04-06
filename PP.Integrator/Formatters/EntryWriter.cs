@@ -14,11 +14,36 @@ internal abstract class EntryWriter : ILogEntryWriter
 
 	public virtual void OnBeforeEntryWrite() { }
 
-	public void Write<TState>(in LogEntry<TState> logEntry, object scope)
+	public void Write<TState>(in LogRecord<TState> record, object scope)
 	{
+		var errorBytes = record.ErrorBytes;
+		var stateBytes = record.StateBytes;
+
+		record.Deconstruct(out var logEntry, out var logScope);
+
 		OnBeforeEntryWrite();
 		var message = logEntry.Formatter?.Invoke(logEntry.State, logEntry.Exception) ?? logEntry.State?.ToString();
-		WriteInternal(message, logEntry.LogLevel, logEntry.Category, logEntry.EventId.Id, logEntry.Exception, logEntry.State, logEntry.Timestamp);
+
+		var originalFormat = TryGetFormat(logEntry.State);
+
+		WriteTimestamp(logEntry.Timestamp);
+		WriteLogLevel(logEntry.LogLevel);
+		WriteContext(logEntry.Category);
+		WriteMessage(message);
+		WriteEventId(logEntry.EventId);
+
+		if (errorBytes != null)
+			WriteRawBytes(errorBytes);
+		else
+			WriteException(logEntry.Exception);
+
+		WriteFormat(originalFormat);
+
+		if (stateBytes != null)
+			WriteRawBytes(stateBytes);
+		else
+			WriteState(logEntry.State);
+		
 		OnAfterEntryWrite();
 	}
 
@@ -36,19 +61,7 @@ internal abstract class EntryWriter : ILogEntryWriter
 		return null;
 	}
 
-	protected void WriteInternal(string? message, in LogLevel logLevel, string context, in int eventId, Exception? exception, object? state, in DateTimeOffset stamp)
-	{
-		var originalFormat = TryGetFormat(state);		
-
-		WriteTimestamp(stamp);
-		WriteLogLevel(logLevel);
-		WriteContext(context);
-		WriteMessage(message);
-		WriteEventId(eventId);
-		WriteException(exception);
-		WriteFormat(originalFormat);
-		WriteState(state);
-	}
+	protected abstract void WriteRawBytes(in byte[] bytes);
 
 	protected abstract void WriteContext(string context);
 

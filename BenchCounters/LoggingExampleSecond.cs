@@ -60,7 +60,7 @@ public class LoggingExampleSecond : BackgroundService
 			statusLogger.LogError(err, "log error");
 		}
 
-		Console.WriteLine(nameof(LoggingExampleSecond) + " Logging completed" + inta);
+		Console.WriteLine(nameof(LoggingExampleSecond) + " completed " + inta);
 	}
 
 	public record Status

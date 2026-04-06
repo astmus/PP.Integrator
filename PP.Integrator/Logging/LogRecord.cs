@@ -8,12 +8,15 @@ namespace PP.Integrator.Logging;
 /// <param name="Scope">Объект контекста (scope), с которым связана запись.</param>
 internal abstract record LogRecord(TableScope Scope)
 {
-	public byte[] ErrorBytes { get; set; }
-	public byte[] StateBytes { get; set; }
+	public byte[]? ErrorBytes { get; set; }
+	public byte[]? StateBytes { get; set; }
 	/// <summary>
 	/// Записывает запись лога через указанный writer.
 	/// </summary>
 	/// <param name="entryWriter">Компонент, выполняющий запись.</param>
 	public abstract void Write(ILogEntryWriter entryWriter);
+
+	public abstract Exception? GetException();
+	public abstract object GetState();
 }
 
