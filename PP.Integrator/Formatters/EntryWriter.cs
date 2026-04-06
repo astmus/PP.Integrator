@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using PP.Integrator.Logging;
 
@@ -5,56 +6,61 @@ namespace PP.Integrator.Formatters;
 
 internal abstract class EntryWriter : ILogEntryWriter
 {
-	private const string OriginalFormatKey = "{OriginalFormat}";
+	protected static readonly JsonWriterOptions _jsonWriterOptions = new JsonWriterOptions() { Indented = false, SkipValidation = true };
+	protected const string OriginalFormatKey = "{OriginalFormat}";
 
 	public virtual void OnAfterEntryWrite() { }
 
 	public virtual void OnBeforeEntryWrite() { }
 
-	public void Write<TState>(in LogEntry<TState> logEntry, TextWriter textWriter, object scope)
+	public void Write<TState>(in LogRecord<TState> record, object scope)
 	{
+		var errorBytes = record.ErrorBytes;
+		var stateBytes = record.StateBytes;
+
+		record.Deconstruct(out var logEntry, out var logScope);
+
 		OnBeforeEntryWrite();
 		var message = logEntry.Formatter?.Invoke(logEntry.State, logEntry.Exception) ?? logEntry.State?.ToString();
-		WriteInternal(message, logEntry.LogLevel, logEntry.Category, logEntry.EventId.Id, logEntry.Exception, logEntry.State, logEntry.Timestamp);
+
+		var originalFormat = TryGetFormat(logEntry.State);
+
+		WriteTimestamp(logEntry.Timestamp);
+		WriteLogLevel(logEntry.LogLevel);
+		WriteContext(logEntry.Category);
+		WriteMessage(message);
+		WriteEventId(logEntry.EventId);
+
+		if (errorBytes != null)
+			WriteRawBytes(errorBytes);
+		else
+			WriteException(logEntry.Exception);
+
+		WriteFormat(originalFormat);
+
+		if (stateBytes != null)
+			WriteRawBytes(stateBytes);
+		else
+			WriteState(logEntry.State);
+		
 		OnAfterEntryWrite();
 	}
 
-	private static object SplitStructuredState(IReadOnlyList<KeyValuePair<string, object?>> structuredState, out string? originalFormat)
+	private static string TryGetFormat(object state)
 	{
-		originalFormat = null;
-		List<KeyValuePair<string, object?>>? filteredState = null;
+		if (state is not IReadOnlyList<KeyValuePair<string, object?>> structuredState)
+			return null;
+
 		for (var i = 0; i < structuredState.Count; i++)
 		{
-			var item = structuredState[i];
-			if (string.Equals(item.Key, OriginalFormatKey, StringComparison.Ordinal))
-			{
-				originalFormat = item.Value?.ToString();
-				continue;
-			}
-
-			filteredState ??= new List<KeyValuePair<string, object?>>(structuredState.Count);
-			filteredState.Add(item);
+			if (string.Equals(structuredState[i].Key, OriginalFormatKey, StringComparison.OrdinalIgnoreCase))
+				return structuredState[i].Value.ToString();
 		}
 
-		return filteredState?.ToArray() ?? Array.Empty<KeyValuePair<string, object?>>();
+		return null;
 	}
 
-	protected void WriteInternal(string? message, in LogLevel logLevel, string context, in int eventId, Exception? exception, object? state, in DateTimeOffset stamp)
-	{
-		var originalFormat = default(string);
-		var statePayload = state;
-		if (state is IReadOnlyList<KeyValuePair<string, object?>> structuredState)
-			statePayload = SplitStructuredState(structuredState, out originalFormat);
-
-		WriteTimestamp(stamp);
-		WriteLogLevel(logLevel);
-		WriteContext(context);
-		WriteMessage(message);
-		WriteEventId(eventId);
-		WriteException(exception);
-		WriteFormat(originalFormat);
-		WriteState(statePayload);
-	}
+	protected abstract void WriteRawBytes(in byte[] bytes);
 
 	protected abstract void WriteContext(string context);
 

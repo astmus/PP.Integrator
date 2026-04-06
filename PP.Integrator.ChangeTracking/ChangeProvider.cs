@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace PP.Integrator.ChangeTracking
@@ -6,12 +6,12 @@ namespace PP.Integrator.ChangeTracking
 	/// <summary>
 	/// Класс обеспецивающий доставку уведомлений об изменениях данных
 	/// </summary>
-	/// <typeparam name="Item"></typeparam>
+	/// <typeparam name="Item">Тип отслеживаемой сущности.</typeparam>
 	public class ChangeProvider<Item> : IObservable<ChangeItemInfo<Item>>, IChangeProvider where Item : class
 	{
 		private readonly List<IObserver<ChangeItemInfo<Item>>> observers;
 		/// <summary>
-		/// 
+		/// Инициализирует новый экземпляр поставщика изменений.
 		/// </summary>
 		public ChangeProvider()
 		{
@@ -52,7 +52,7 @@ namespace PP.Integrator.ChangeTracking
 		/// <summary>
 		/// Передает информацию об изменениях всем наблюдателям
 		/// </summary>
-		/// <param name="changes"></param>
+		/// <param name="changes">JSON-строка с информацией об изменении.</param>
 		public void Provide(string changes)
 		{
 			if (JsonSerializer.Deserialize<ChangeItemInfo<Item>>(changes, options) is not ChangeItemInfo<Item> item)
@@ -65,7 +65,7 @@ namespace PP.Integrator.ChangeTracking
 			//	observer.OnError(item.Error);			
 		}
 
-		static readonly JsonSerializerOptions options = new JsonSerializerOptions()
+		static readonly JsonSerializerOptions options = new ()
 		{
 			PropertyNameCaseInsensitive = true,					
 			Converters =

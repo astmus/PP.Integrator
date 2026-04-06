@@ -1,19 +1,18 @@
-﻿namespace PP.Integrator.Logging
+using Npgsql;
+
+namespace PP.Integrator.Logging
 {
-    /// <summary>
-    /// 
-    /// </summary>
-	public interface ILogEntryWriter
-    {
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <typeparam name="TState"></typeparam>
-        /// <param name="logEntry"></param>
-        /// <param name="textWriter"></param>
-        /// <param name="scope"></param>
-        void Write<TState>(in LogEntry<TState> logEntry, TextWriter textWriter, object scope);
-    }
+	/// <summary>
+	/// Интерфейс записи лог-события в целевой поток.
+	/// </summary>
+	internal interface ILogEntryWriter
+	{
+		/// <summary>
+		/// Записывает одну запись лога
+		/// </summary>
+		/// <typeparam name="TState">Тип состояния записи.</typeparam>
+		/// <param name="record">Данные лог-события.</param>
+		/// <param name="scope">Текущий scope логирования.</param>
+		void Write<TState>(in LogRecord<TState> record, object scope);
+	}
 }
-
-

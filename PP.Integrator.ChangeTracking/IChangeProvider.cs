@@ -8,7 +8,7 @@
 		/// <summary>
 		/// Передает информацию об изменениях всем наблюдателям
 		/// </summary>
-		/// <param name="changes"></param>
+		/// <param name="changes">JSON-строка с данными об изменении.</param>
 		void Provide(string changes);
 	}
 }

@@ -1,0 +1,51 @@
+root = true
+
+[*.cs]
+charset = utf-8
+indent_style = tab
+indent_size = tab
+tab_width = 4
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+max_line_length = 140
+
+# Компактное форматирование там, где это сохраняет читаемость
+csharp_preserve_single_line_blocks = true
+csharp_preserve_single_line_statements = true
+
+# Предпочтения по стилю
+csharp_prefer_braces = false:suggestion
+csharp_style_prefer_switch_expression = true:suggestion
+dotnet_style_prefer_collection_expression = true:suggestion
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = false:suggestion
+
+# Поддержка упрощений и ранних выходов
+dotnet_style_object_initializer = true:suggestion
+dotnet_style_collection_initializer = true:suggestion
+dotnet_style_prefer_auto_properties = true:suggestion
+dotnet_style_prefer_simplified_boolean_expressions = true:suggestion
+dotnet_style_prefer_simplified_interpolation = true:suggestion
+dotnet_style_coalesce_expression = true:suggestion
+dotnet_style_null_propagation = true:suggestion
+dotnet_style_prefer_conditional_expression_over_assignment = true:suggestion
+dotnet_style_prefer_conditional_expression_over_return = true:suggestion
+dotnet_style_prefer_is_null_check_over_reference_equality_method = true:suggestion
+
+# Nullable и явность намерений
+csharp_style_throw_expression = true:suggestion
+dotnet_style_explicit_tuple_names = true:suggestion
+
+[*.{csproj,props,targets}]
+indent_style = tab
+indent_size = tab
+tab_width = 4
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+root = true
+
+[*.cs]
+dotnet_diagnostic.CA1822.severity = none

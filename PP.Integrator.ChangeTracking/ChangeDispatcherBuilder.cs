@@ -1,4 +1,4 @@
-﻿#if NET8_0_OR_GREATER
+#if NET8_0_OR_GREATER
 using System.Collections.Frozen;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;
@@ -10,7 +10,7 @@ namespace PP.Integrator.ChangeTracking
 {
 	internal class ChangeDispatcherBuilder : IChangeDispatcherBuilder
 	{		
-		Dictionary<string, Box> trackings = new Dictionary<string, Box>();		
+		Dictionary<string, Box> trackings = new ();		
 		public IChangeDispatcherBuilder TrackChangesOf<Item>() where Item : class
 		{
 			var name = TypeHelper<Item>.Name;

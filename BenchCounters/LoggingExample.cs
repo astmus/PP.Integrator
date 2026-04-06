@@ -7,14 +7,17 @@ namespace BenchCounters;
 
 public class LoggingExample : BackgroundService
 {	
-	private ILogger<LoggingExample> logger;	
-	public LoggingExample(ILogger<LoggingExample> log)
+	private ILogger<LoggingExample> logger;
+	private readonly IHostApplicationLifetime _appLifetime;
+
+	public LoggingExample(ILogger<LoggingExample> log, IHostApplicationLifetime appLifetime)
 	{		
-		this.logger = log;		
+		this.logger = log;
+		_appLifetime = appLifetime;
 	}
 
 	Rootobject[] objs;
-	public int inta = 0;
+	private int inta;
 
 	protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 	{
@@ -28,12 +31,13 @@ public class LoggingExample : BackgroundService
 		inta = 0;
 		try
 		{
+			await Task.Yield();
 			using var background = logger.BeginScope("background");
 
-			while (!stoppingToken.IsCancellationRequested)
+			while (!stoppingToken.IsCancellationRequested && sw.ElapsedMilliseconds < 60000)
 			{
-				var current = objs[Convert.ToInt32(inta++ % 10)];
-				level = (LogLevel)(loglevel++ % 6);
+				var current = objs[Convert.ToInt32(inta % 10)];
+				level = (LogLevel)(loglevel++ % 5);
 
 				var logEntry = new WebSocketLogItem
 				{
@@ -48,27 +52,28 @@ public class LoggingExample : BackgroundService
 					Email = current.email
 				};
 
-				logger.Log(level, inta, logEntry, level >= LogLevel.Error ? exc : default, default);
+				logger.Log(LogLevel.Information, (EventId)(++inta), level >= LogLevel.Error ? exc : default, "message {int} {entry} ", inta, logEntry);
+				//await Task.Delay(1000);
+				//if (inta == 4) break;
 				//logger.LogError(inta, "Error message");
 				//_logger.LogInformation(inta, "Owner {Phone} Soket item {Item}", current.phone, logEntry);
-				if (span < DateTime.Now.TimeOfDay) break;
 			}
 			await Task.CompletedTask;
 		}
-		catch (Exception err)
+		catch (Exception error)
 		{
-			logger.LogError(err.Message, err);
+			logger.LogError(error, "log error");
 		}
 		sw.Stop();
-		Console.WriteLine(nameof(LoggingExampleSecond)+" Logging completed "+sw.Elapsed);
-		Console.WriteLine(inta);
+		Console.WriteLine(nameof(LoggingExample)+" completed "+inta);
+		_appLifetime.StopApplication();
 	}
 
 	public class Rootobject
 	{
 		public string id { get; set; }
 		public int index { get; set; }
-		public Guid guid { get; set; }
+		public Guid uuid { get; set; }
 		public bool isActive { get; set; }
 		public string balance { get; set; }
 		public string picture { get; set; }

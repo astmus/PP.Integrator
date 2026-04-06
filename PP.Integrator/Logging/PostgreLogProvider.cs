@@ -1,73 +1,73 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Npgsql;
 
 namespace PP.Integrator.Logging
 {
 	[UnsupportedOSPlatform("browser")]
-	[ProviderAlias("PostgreLog")]
+	[ProviderAlias("Postgre")]
 	internal sealed class PostgreLogProvider : ILoggerProvider
 	{
-		private readonly NpgsqlDataSource dataSource;
+		private readonly IPostgreLoggingDataSourceAccessor _dataSourceAccessor;
 		private readonly ConcurrentDictionary<string, ILogger> _loggers = new(StringComparer.OrdinalIgnoreCase);
 		private readonly PostgreLoggerProviderOptions _options;
-		private readonly LogLevel _defaultLogLevel;
 		private readonly IPostgreLoggerRootFactory _rootFactory;
-		private PostgreLoggerBase? _rootLogger;
+		private readonly object _rootSync = new();
+		private PostgreLogger? _rootLogger;
+		private int _disposed;
 
-		public PostgreLogProvider(
-			NpgsqlDataSource dataSource,
-			PostgreLoggerProviderOptions options,
-			LogLevel defaultLogLevel,
-			IPostgreLoggerRootFactory rootFactory)
+		public PostgreLogProvider(IPostgreLoggingDataSourceAccessor dataSourceAccessor, PostgreLoggerProviderOptions options, IPostgreLoggerRootFactory rootFactory)
 		{
-			this.dataSource = dataSource;
+			_dataSourceAccessor = dataSourceAccessor;
 			_options = options;
-			_defaultLogLevel = defaultLogLevel;
 			_rootFactory = rootFactory;
 		}
 
-		public PostgreLogProvider(
-			NpgsqlDataSource dataSource,
-			IOptions<PostgreLoggerProviderOptions> options,
-			IOptions<LoggerFilterOptions> loggerFilterOptions,
-			IPostgreLoggerRootFactory rootFactory)
-			: this(
-				dataSource,
-				options.Value,
-				ResolveDefaultLogLevel(options.Value, loggerFilterOptions.Value),
-				rootFactory)
+		public PostgreLogProvider(IPostgreLoggingDataSourceAccessor dataSourceAccessor, IOptions<PostgreLoggerProviderOptions> options, IPostgreLoggerRootFactory rootFactory)
+			: this(dataSourceAccessor, options.Value, rootFactory)
 		{
 		}
 
-		public ILogger CreateLogger(string categoryName) =>
-			_loggers.GetOrAdd(categoryName, CreateDelegatedLogger);
+		public ILogger CreateLogger(string categoryName)
+		{
+			if (Volatile.Read(ref _disposed) == 1)
+				throw new ObjectDisposedException(nameof(PostgreLogProvider));
+
+			return _loggers.GetOrAdd(categoryName, CreateDelegatedLogger);
+		}
 
 		private ILogger CreateDelegatedLogger(string categoryName)
 		{
-			_rootLogger ??= _rootFactory.CreateRootLogger(categoryName, dataSource, _options, _defaultLogLevel);
-			return new PostgreDelegatedLogger(categoryName, _rootLogger);
+			var root = EnsureRootLogger();
+			return new PostgreDelegatedLogger(categoryName, root);
 		}
 
 		public void Dispose()
 		{
-			_rootLogger?.Flush();
+			if (Interlocked.Exchange(ref _disposed, 1) == 1)
+				return;
+
+			_rootLogger?.Dispose();
 			_loggers.Clear();
-			
-#if DEBUG
-			Console.WriteLine("Logger disposed");
-#endif
 		}
 
-		private static LogLevel ResolveDefaultLogLevel(PostgreLoggerProviderOptions options, LoggerFilterOptions filterOptions)
+		private PostgreLogger EnsureRootLogger()
 		{
-			if (options.DefaultLogLevel.HasValue)
-				return options.DefaultLogLevel.Value;
+			var existing = Volatile.Read(ref _rootLogger);
+			if (existing != null)
+				return existing;
 
-			return filterOptions.MinLevel;
+			lock (_rootSync)
+			{
+				existing = _rootLogger;
+				if (existing != null)
+					return existing;
+
+				existing = _rootFactory.CreateRootLogger(_dataSourceAccessor, _options);
+				_rootLogger = existing;
+				return existing;
+			}
 		}
 	}
 }
-

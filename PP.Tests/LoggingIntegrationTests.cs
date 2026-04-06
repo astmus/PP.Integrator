@@ -30,7 +30,7 @@ public class LoggingIntegrationTests
 	}
 
 	[Fact]
-	public void AddPostgreLogger_DefaultsToClassicRootFactory()
+	public void AddPostgreLogger_DefaultsToUnifiedRootFactory()
 	{
 		var services = new ServiceCollection();
 		services.AddLogging(builder =>
@@ -38,42 +38,26 @@ public class LoggingIntegrationTests
 
 		using var provider = services.BuildServiceProvider();
 		var rootFactory = provider.GetRequiredService<IPostgreLoggerRootFactory>();
-		Assert.IsType<PostgreClassicLoggerRootFactory>(rootFactory);
+		Assert.IsType<PostgreLoggerRootFactory>(rootFactory);
 	}
 
 	[Fact]
-	public void UseAutoWait_ReplacesRootFactory()
+	public void UseDataFlow_SetsUnifiedRootFactory()
 	{
 		var services = new ServiceCollection();
 		services.AddLogging(builder =>
 		{
 			var withPostgre = PP.Integrator.IntegratorLoggerExtensions.AddPostgreLogger(builder, static cfg => cfg.Host = "localhost");
-			PP.Integrator.IntegratorLoggerExtensions.UseAutoWait(withPostgre);
+			PP.Integrator.IntegratorLoggerExtensions.UseDataFlow(withPostgre);
 		});
 
 		using var provider = services.BuildServiceProvider();
 		var rootFactory = provider.GetRequiredService<IPostgreLoggerRootFactory>();
-		Assert.IsType<PostgreAutoWaitLoggerRootFactory>(rootFactory);
+		Assert.IsType<PostgreLoggerRootFactory>(rootFactory);
 	}
 
 	[Fact]
-	public void UseClassic_AfterUseAutoWait_SetsClassicRootFactory()
-	{
-		var services = new ServiceCollection();
-		services.AddLogging(builder =>
-		{
-			var withPostgre = PP.Integrator.IntegratorLoggerExtensions.AddPostgreLogger(builder, static cfg => cfg.Host = "localhost");
-			var withAutoWait = PP.Integrator.IntegratorLoggerExtensions.UseAutoWait(withPostgre);
-			PP.Integrator.IntegratorLoggerExtensions.UseClassic(withAutoWait);
-		});
-
-		using var provider = services.BuildServiceProvider();
-		var rootFactory = provider.GetRequiredService<IPostgreLoggerRootFactory>();
-		Assert.IsType<PostgreClassicLoggerRootFactory>(rootFactory);
-	}
-
-	[Fact]
-	public void AddPostgreLogger_WithConfigure_RegistersNpgsqlDataSourceInContainer()
+	public void AddPostgreLogger_WithConfigure_RegistersLoggingDataSourceAccessor()
 	{
 		var services = new ServiceCollection();
 		services.AddLogging(builder =>
@@ -86,7 +70,8 @@ public class LoggingIntegrationTests
 			}));
 
 		using var provider = services.BuildServiceProvider();
-		var dataSource = provider.GetRequiredService<NpgsqlDataSource>();
-		Assert.NotNull(dataSource);
+		var accessor = provider.GetRequiredService<IPostgreLoggingDataSourceAccessor>();
+		Assert.NotNull(accessor);
+		Assert.NotNull(accessor.DataSource);
 	}
 }

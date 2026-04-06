@@ -1,4 +1,4 @@
-﻿using System.Buffers;
+using System.Buffers;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -17,9 +17,11 @@ namespace PP.Integrator.Formatters
 		private const string C = "Critical";
 		const int DefaultBufferSize = 1024;
 		const string DateFormat = "yyyy.MM.dd hh:mm:ss";
-		static readonly JsonWriterOptions _options;
-		public void Write<TState>(in LogEntry<TState> logEntry, TextWriter textWriter, object scope)
+		static readonly JsonWriterOptions _options = new JsonWriterOptions() { Indented = false };
+		public void Write<TState>(in LogRecord<TState> record, object scope)
 		{
+			var logEntry = record.Entry;
+			TextWriter textWriter = null;
 			var scopeProvider = scope as IExternalScopeProvider;
 			if (logEntry.State is IReadOnlyList<KeyValuePair<string, object>> state)
 			{

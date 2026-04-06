@@ -1,22 +1,22 @@
-using Microsoft.Extensions.Logging;
-using PP.Integrator.Formatters;
+using static PP.Integrator.Logging.LogTableScopesProvider;
 
 namespace PP.Integrator.Logging;
 
 /// <summary>
 /// Базовый класс элемента логирования.
 /// </summary>
-/// <param name="Scope"></param>
-public abstract record LogRecord(object Scope)
+/// <param name="Scope">Объект контекста (scope), с которым связана запись.</param>
+internal abstract record LogRecord(TableScope Scope)
 {
+	public byte[]? ErrorBytes { get; set; }
+	public byte[]? StateBytes { get; set; }
 	/// <summary>
 	/// Записывает запись лога через указанный writer.
 	/// </summary>
-	/// <param name="entryWriter"></param>
-	/// <param name="textWriter"></param>
-	public abstract void Write(ILogEntryWriter entryWriter, TextWriter textWriter);
+	/// <param name="entryWriter">Компонент, выполняющий запись.</param>
+	public abstract void Write(ILogEntryWriter entryWriter);
 
-	internal virtual void Write(BulkWriter writer, object _) => Write((ILogEntryWriter)writer, TextWriter.Null);
+	public abstract Exception? GetException();
+	public abstract object GetState();
 }
-
 

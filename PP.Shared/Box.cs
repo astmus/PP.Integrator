@@ -1,9 +1,10 @@
-﻿using System.Runtime.CompilerServices;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 #nullable disable
 namespace PP
 {
 	// пока оставлю их record'ами, возможно Deconstruct пригодится
-	
+
 	/// <summary>
 	/// Базовый класс для избежания boxin \ unboxing и смешанных колекций из классов и типов значений
 	/// </summary>
@@ -16,7 +17,7 @@ namespace PP
 		/// <param name="value">Внутреннее значение</param>
 		/// <returns></returns>
 		public static Box<T> Create<T>(ref T value)
-			=> new Box<T>(value);
+			=> new(value);
 
 		/// <summary>
 		/// Создать типизированный box
@@ -25,7 +26,7 @@ namespace PP
 		/// <param name="value">Внутреннее значение</param>
 		/// <returns></returns>
 		public static Box<T> Create<T>(T value)
-			=> new Box<T>(value);
+			=> new (value);
 
 		/// <summary>
 		/// Полчить внутреннее значение как тип <typeparamref name="T"/>
