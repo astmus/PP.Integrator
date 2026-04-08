@@ -70,6 +70,12 @@ public class LoggingContractsTests
 		Assert.Equal("logs.log", entry.Scope?.ToString());
 	}
 
+	[Fact]
+	public void IsEnabled_Information_MustBeTrue()
+	{
+		var root = new SpyRootLogger();
+		var logger = new PostgreDelegatedLogger("Test.Category", root);
+
 		Assert.True(logger.IsEnabled(LogLevel.Information));
 	}
 
